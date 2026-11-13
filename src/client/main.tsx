@@ -1,5 +1,7 @@
 import { createRoot } from "react-dom/client";
-import { App } from "./app";
+import { PmApp } from "./pm/app";
 import "./styles.css";
 
-createRoot(document.getElementById("app")!).render(<App />);
+// The property-management frontend (src/client/pm). The original OpenProperty
+// app in ./app is kept in the tree for reference but no longer mounted.
+createRoot(document.getElementById("app")!).render(<PmApp />);
