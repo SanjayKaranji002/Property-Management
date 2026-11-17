@@ -277,7 +277,7 @@ export function buildInstallments(contracts: Contract[], vat: number): Installme
 export const seedUtilities: UtilityBill[] = [
   { id: 1, contract_id: 1, type: "electricity", period: rel(-30).slice(0, 7), amount: 640, status: "paid", provider: "DEWA", paid_on: rel(-12), paid_method: "Paid by tenant to provider", paid_ref: "DEWA-RCPT-55821", paid_by: "Fatima (Property Manager)" },
   { id: 2, contract_id: 1, type: "water", period: rel(-30).slice(0, 7), amount: 210, status: "unpaid", provider: "DEWA" },
-  { id: 3, contract_id: 2, type: "electricity", period: rel(-30).slice(0, 7), amount: 1820, status: "unpaid", provider: "DEWA" },
+  { id: 3, contract_id: 2, type: "electricity", period: rel(-30).slice(0, 7), amount: 1820, status: "unpaid", provider: "DEWA", due_date: rel(5), receipt_doc_id: 9, receipt_status: "submitted", paid_on: rel(-2), paid_ref: "DEWA-TXN-88213407" },
   { id: 4, contract_id: 4, type: "electricity", period: rel(-30).slice(0, 7), amount: 560, status: "paid", provider: "ADDC", paid_on: rel(-10), paid_method: "Bank transfer", paid_ref: "TRF-771204", paid_by: "Leena Das" },
   { id: 5, contract_id: 4, type: "water", period: rel(-30).slice(0, 7), amount: 180, status: "paid", provider: "ADDC", paid_on: rel(-10), paid_method: "Bank transfer", paid_ref: "TRF-771205", paid_by: "Leena Das" },
   { id: 6, contract_id: 7, type: "electricity", period: rel(-30).slice(0, 7), amount: 430, status: "unpaid", provider: "SEWA" },
@@ -297,6 +297,7 @@ export const seedDocs: Doc[] = [
   { id: 6, entity: "tenant", entity_id: 2, category: "emirates_id", name: "Maria Santos - Emirates ID.png", mime: "image/svg+xml", url: svgDoc("Emirates ID · Maria Santos", "#0f766e"), uploaded_on: rel(-275), expiry: rel(25) },
   { id: 7, entity: "landlord", entity_id: 2, category: "passport", name: "Ahmed Al Mansoori - Passport.png", mime: "image/svg+xml", url: svgDoc("Passport · Ahmed Al Mansoori", "#1e3a8a"), uploaded_on: rel(-700) },
   { id: 8, entity: "tenant", entity_id: 3, category: "kyc", name: "Global Trade - Trade Licence.png", mime: "image/svg+xml", url: svgDoc("Trade Licence · Global Trade LLC", "#be123c"), uploaded_on: rel(-400) },
+  { id: 9, entity: "utility", entity_id: 3, category: "utility_receipt", name: "Maria Santos - DEWA payment receipt.png", mime: "image/svg+xml", url: svgDoc("DEWA payment receipt · AED 1,820", "#0f766e"), uploaded_on: rel(-2) },
 ];
 
 export const seedMessages: Message[] = [
