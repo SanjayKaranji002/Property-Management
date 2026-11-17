@@ -207,6 +207,7 @@ export function BillImportDialog({ onClose }: { onClose: () => void }) {
                     {charges.length ? charges.map((ch) => <Fact key={ch.type} ok label={`${UTIL_LABEL[ch.type]} ${aedExact(ch.amount)}`} />) : <Fact ok={false} label="Amount?" />}
                     {r.dueDate && <Fact ok label={`Due ${fmtDate(r.dueDate)}`} />}
                     {p?.account && <Fact ok label={`Acc. ${p.account}`} />}
+                    {p?.finalBill && <Fact ok label="Final bill (move-out)" />}
                     {r.paidAmount > 0 && <Fact ok label={`Payment ${aedExact(r.paidAmount)}`} />}
                     {!p?.textFound && <span className="text-xs text-[#7a5a24]">This file has no readable text (scan or photo) — fill in the details below.</span>}
                   </div>
