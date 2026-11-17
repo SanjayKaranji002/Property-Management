@@ -15,6 +15,10 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 export interface ParsedBill {
   provider: string | null;
   account: string | null;
+  /** DEWA premise number and the name the bill is addressed to, used when the account number is missing. */
+  premise: string | null; customerName: string | null;
+  /** The text found in the file, shown in the import window. */
+  text: string;
   /** Consumption month, YYYY-MM. */
   period: string | null;
   electricity: number | null;
@@ -85,11 +89,21 @@ export function parseBill(text: string, fileName = ""): ParsedBill {
     : /\bSEWA\b|Sharjah Electricity/i.test(hay) ? "SEWA"
     : /Etihad\s*(Water|WE)|\bFEWA\b/i.test(hay) ? "Etihad WE" : null;
 
+  // Account number: a labelled number (same line, or the next line when the
+  // bill prints labels and values in columns), else a 10-digit number that
+  // looks like a DEWA contract account.
+  const ACC_LABEL = String.raw`(?:Contract\s*Account(?:\s*(?:No\.?|Number))?|C\.?\s*A\.?\s*No\.?|Account\s*(?:No\.?|Number|#)|Acc(?:ount)?\.?\s*No\.?|Customer\s*(?:No|Number|ID)|Consumer\s*(?:No|Number))`;
   const acc = first(hay, [
-    /(?:Contract\s*Account|Account\s*(?:No\.?|Number|#)|Acc(?:ount)?\.?\s*No\.?|Customer\s*(?:No|Number))\s*[:#.\-]?\s*(\d[\d\s]{6,14}\d)/i,
-    /\b(20\d{8})\b/,
+    new RegExp(String.raw`${ACC_LABEL}\s*[:#.\-]?\s*(\d[\d\s-]{6,14}\d)`, "i"),
+    new RegExp(String.raw`${ACC_LABEL}[^\n\d]*\n[^\d\n]{0,20}(\d[\d\s-]{6,14}\d)`, "i"),
+    /\b(2\d{9})\b/,
+    /\b(\d{10})\b/,
   ]);
-  const account = acc ? acc[1].replace(/\s/g, "") : null;
+  const account = acc ? acc[1].replace(/[\s-]/g, "") : null;
+  const prem = first(hay, [/Premise\s*(?:No\.?|Number|#)?\s*[:#.\-]?\s*(\d[\d\s]{6,11}\d)/i]);
+  const premise = prem ? prem[1].replace(/\s/g, "") : null;
+  const cust = first(t, [/(?:Customer|Consumer|Account)\s*Name\s*[:\-]?\s*([A-Za-z][A-Za-z .'&-]{2,60})/i, /^\s*(?:Mr|Mrs|Ms|M\/s)\.?\s+([A-Za-z][A-Za-z .'&-]{2,60})$/im]);
+  const customerName = cust ? cust[1].trim().replace(/\s{2,}/g, " ") : null;
 
   // Billing period: prefer an explicit "from – to" range (use its end month), then "Month YYYY".
   let period: string | null = null;
@@ -120,7 +134,7 @@ export function parseBill(text: string, fileName = ""): ParsedBill {
   if (!account) missing.push("account number");
   if (!period) missing.push("billing month");
   if (electricity == null && water == null && total == null) missing.push("amount");
-  return { provider, account, period, electricity, water, total, dueDate, paidAmount: paidAmount || null, paidOn, missing, textFound: t.trim().length > 20 };
+  return { provider, account, premise, customerName, text: t.trim(), period, electricity, water, total, dueDate, paidAmount: paidAmount || null, paidOn, missing, textFound: t.trim().length > 20 };
 }
 
 export async function readBill(file: File): Promise<ParsedBill> {

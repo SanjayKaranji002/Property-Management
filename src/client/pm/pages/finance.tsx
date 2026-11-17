@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { Link2, Plus, Send, Paperclip, Upload, FileUp, Receipt as ReceiptIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { aed, daysUntil, fmtDate, today, type Installment, type Receipt, type UtilityBill, PROVIDER_BY_EMIRATE, type Doc, UTIL_LABEL } from "../data";
+import { aed, daysUntil, fmtDate, today, type Installment, type Receipt, type UtilityBill, PROVIDER_BY_EMIRATE, type Doc, UTIL_LABEL, aedExact } from "../data";
 import { Segmented } from "./contracts";
 import { NotifyButton } from "./notify";
 import { BillImportDialog } from "./bill-import";
@@ -203,7 +203,7 @@ export function UtilitiesPage() {
             <Td><Pill tone={u.type === "electricity" ? "amber" : u.type === "water" ? "blue" : "violet"}>{UTIL_LABEL[u.type]}</Pill></Td>
             <Td>{u.provider}<div className="text-xs tabular-nums text-muted-foreground">Acc. {c?.dewa_account || "—"}</div></Td>
             <Td>{month(u.period)}</Td>
-            <Td className="tabular-nums">{aed(u.amount)}</Td>
+            <Td className="tabular-nums">{aedExact(u.amount)}</Td>
             <Td>{u.status === "paid"
               ? <div><Pill tone="green">Paid</Pill><div className="mt-0.5 text-xs text-muted-foreground">{fmtDate(u.paid_on)}{u.paid_ref ? ` · ${u.paid_ref}` : ""}</div>{u.paid_by && <div className="text-xs text-muted-foreground">by {u.paid_by}</div>}</div>
               : u.receipt_status === "submitted"
@@ -260,8 +260,8 @@ function MarkUtilityPaid({ bill, onClose }: { bill: UtilityBill | null; onClose:
   const c = s.contract(bill.contract_id);
   return (
     <Modal open onClose={onClose} title="Mark utility bill paid"
-      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!f.paid_on} onClick={() => { s.saveUtility({ ...bill, status: "paid", ...f, paid_by: s.me.name }); s.notify("Utility bill paid", `${bill.provider} ${UTIL_LABEL[bill.type]} · ${aed(bill.amount)}`); onClose(); }}>Mark paid</Button></>}>
-      <p className="text-sm text-muted-foreground">{c ? `${s.propLabel(c.property_id)} · ${s.tenantName(c.tenant_id)} · ` : ""}{bill.provider} {UTIL_LABEL[bill.type]} · {aed(bill.amount)}</p>
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!f.paid_on} onClick={() => { s.saveUtility({ ...bill, status: "paid", ...f, paid_by: s.me.name }); s.notify("Utility bill paid", `${bill.provider} ${UTIL_LABEL[bill.type]} · ${aedExact(bill.amount)}`); onClose(); }}>Mark paid</Button></>}>
+      <p className="text-sm text-muted-foreground">{c ? `${s.propLabel(c.property_id)} · ${s.tenantName(c.tenant_id)} · ` : ""}{bill.provider} {UTIL_LABEL[bill.type]} · {aedExact(bill.amount)}</p>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Payment date"><Input type="date" value={f.paid_on} onChange={(e) => setF({ ...f, paid_on: e.target.value })} /></Field>
         <Field label="How it was paid"><NSelect value={f.paid_method} onChange={(v) => setF({ ...f, paid_method: v })} options={["Paid by tenant to provider", "Bank transfer", "Cash", "Card", "Deducted from deposit"]} /></Field>
