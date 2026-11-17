@@ -7,6 +7,7 @@ import { NotifyButton } from "./notify";
 import { L, useHref } from "../nav";
 import { daysUntil, DOC_LABELS, fmtDate, RECIPIENT_LABEL, REMINDER_LABEL, type RecipientType, ROLE_LABEL, VIA_LABEL, type ReminderType, type SendVia, type Channel, type Doc, type DocCategory, type Role, type Settings, type Template, type User, agreementRef, UTIL_LABEL } from "../data";
 import { PermissionsPanel } from "./access";
+import { PropertyChecklist } from "./property-picker";
 import { ContactPreferences } from "./contact-prefs";
 import { describeSchedule } from "../reminders";
 import { cn } from "@/lib/utils";
@@ -197,29 +198,6 @@ export function UsersPage() {
   );
 }
 
-/** Pick properties one by one, or a landlord's whole portfolio at once. */
-export function PropertyChecklist({ ids, onChange, note }: { ids: number[]; onChange: (ids: number[]) => void; note?: (propertyId: number) => string | undefined }) {
-  const s = useStore();
-  const [q, setQ] = useState("");
-  const toggle = (id: number, on: boolean) => onChange(on ? [...new Set([...ids, id])] : ids.filter((x) => x !== id));
-  const rows = s.properties.filter((p) => `${s.propLabel(p.id)} ${s.landlord(p.landlord_id)?.name ?? ""} ${p.community}`.toLowerCase().includes(q.toLowerCase()));
-  return (
-    <div className="col-span-2 space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium">Assigned properties ({ids.length})</span>
-        <span className="flex-1" />
-        <NSelect className="h-8 w-56" value="" onChange={(v) => { if (v) onChange([...new Set([...ids, ...s.properties.filter((p) => p.landlord_id === Number(v)).map((p) => p.id)])]); }}
-          options={[{ value: "", label: "Add all from landlord…" }, ...s.landlords.map((l) => ({ value: l.id, label: `${l.name} (${s.properties.filter((p) => p.landlord_id === l.id).length})` }))]} />
-        {ids.length > 0 && <button type="button" className="text-xs text-muted-foreground hover:underline" onClick={() => onChange([])}>Clear</button>}
-      </div>
-      <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search property, landlord or area" className="h-9" />
-      <div className="grid max-h-48 grid-cols-1 gap-1 overflow-auto rounded-2xl border border-input p-2 text-sm sm:grid-cols-2">
-        {rows.map((p) => <label key={p.id} className="flex items-center gap-2"><input type="checkbox" checked={ids.includes(p.id)} onChange={(e) => toggle(p.id, e.target.checked)} /><span className="min-w-0 truncate">{s.propLabel(p.id)} <span className="text-xs text-muted-foreground">· {s.landlord(p.landlord_id)?.name}</span>{note?.(p.id) && <span className="text-xs text-[#9a6a1f]"> · {note(p.id)}</span>}</span></label>)}
-      </div>
-    </div>
-  );
-}
-
 function UserDialog({ value, onClose }: { value: Partial<User> | null; onClose: () => void }) {
   const s = useStore();
   const [f, setF] = useState<Partial<User>>({});
@@ -239,7 +217,9 @@ function UserDialog({ value, onClose }: { value: Partial<User> | null; onClose: 
             <ViaPicker value={f.property_access ?? "all"} onChange={(v) => set("property_access", v)} options={[{ value: "all", label: "All properties" }, { value: "selected", label: "Selected properties" }]} />
           </Field>)}
         {(f.role === "broker" || (f.role === "manager" && f.property_access === "selected")) && (
-          <PropertyChecklist ids={f.property_ids ?? []} onChange={(ids) => set("property_ids", ids)} note={f.role === "manager" ? (pid) => { const o = s.managersOf(pid).find((u) => u.id !== f.id); return o ? `now ${o.name}, will move` : undefined; } : undefined} />)}
+          <PropertyChecklist ids={f.property_ids ?? []} onChange={(ids) => set("property_ids", ids)} assignee={f.name || "this manager"}
+            owner={f.role === "manager" ? (pid) => s.managersOf(pid).find((u) => u.id !== f.id)?.name : undefined}
+            note={f.role === "broker" ? (pid) => { const o = s.brokersOf(pid).filter((u) => u.id !== f.id).map((u) => u.name); return o.length ? `also ${o.join(", ")}` : undefined; } : undefined} />)}
         {f.role === "landlord" && <Field label="Landlord"><NSelect value={f.landlord_id ?? ""} onChange={(v) => set("landlord_id", Number(v))} options={[{ value: "", label: "Select…" }, ...s.landlords.map((l) => ({ value: l.id, label: l.name }))]} /></Field>}
         {f.role === "tenant" && <Field label="Tenant"><NSelect value={f.tenant_id ?? ""} onChange={(v) => set("tenant_id", Number(v))} options={[{ value: "", label: "Select…" }, ...s.tenants.map((t) => ({ value: t.id, label: `${t.first_name} ${t.last_name}` }))]} /></Field>}
         <label className="col-span-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={!!f.active} onChange={(e) => set("active", e.target.checked)} />Active</label>

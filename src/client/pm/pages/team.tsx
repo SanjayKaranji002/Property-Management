@@ -5,7 +5,7 @@ import { type User } from "../data";
 import { L, useHref } from "../nav";
 import { useStore } from "../store";
 import { Modal, Page, Pill, SearchBox, Stat, Table, Td, ViaPicker } from "../ui";
-import { PropertyChecklist } from "./admin";
+import { PropertyChecklist } from "./property-picker";
 
 type TeamRole = "manager" | "broker";
 const TITLE: Record<TeamRole, string> = { manager: "Property Managers", broker: "Brokers" };
@@ -64,9 +64,10 @@ function AssignDialog({ user, onClose }: { user: User; onClose: () => void }) {
   const [access, setAccess] = useState<"all" | "selected">(isManager ? user.property_access ?? "all" : "selected");
   const [ids, setIds] = useState<number[]>(user.property_ids ?? []);
 
-  // Who has each property now: the manager it would move from, or the other brokers on it.
+  // The manager a property would move from (asks first), or the other brokers on it.
+  const owner = (pid: number) => (isManager ? s.managersOf(pid).find((u) => u.id !== user.id)?.name : undefined);
   const note = (pid: number) => {
-    if (isManager) { const o = s.managersOf(pid).find((u) => u.id !== user.id); return o ? `now ${o.name}, will move` : undefined; }
+    if (isManager) return undefined;
     const others = s.brokersOf(pid).filter((u) => u.id !== user.id).map((u) => u.name);
     return others.length ? `also ${others.join(", ")}` : undefined;
   };
@@ -92,7 +93,7 @@ function AssignDialog({ user, onClose }: { user: User; onClose: () => void }) {
           <ViaPicker value={access} onChange={setAccess} options={[{ value: "all", label: "All properties" }, { value: "selected", label: "Selected properties" }]} />
           <p className="text-xs text-muted-foreground">{access === "all" ? "Sees every property. Properties assigned to other managers stay with them." : "Sees only the ticked properties. Each property has one manager, so ticking one already assigned moves it here."}</p>
         </div>)}
-      {access === "selected" && <PropertyChecklist ids={ids} onChange={setIds} note={note} />}
+      {access === "selected" && <PropertyChecklist ids={ids} onChange={setIds} note={note} owner={owner} assignee={user.name} />}
     </Modal>
   );
 }

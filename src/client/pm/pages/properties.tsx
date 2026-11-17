@@ -6,6 +6,7 @@ import { aed, EMIRATES, fmtDate, type Property, type PropertyStatus, agreementRe
 import { useStore } from "../store";
 import { L, useHref } from "../nav";
 import { attachUploads, Card, DocumentsPanel, PendingUploads, Field, Modal, NSelect, Page, Pill, SearchBox, StatusPill, Table, Td, type PendingFile } from "../ui";
+import { ReassignConfirm } from "./property-picker";
 
 export function PropertiesPage({ go }: { go: (to: string) => void }) {
   const s = useStore();
@@ -55,6 +56,8 @@ export function PropertyDialog({ value, onClose }: { value: Partial<Property> | 
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [mgr, setMgr] = useState<number | "">("");
   const [brokers, setBrokers] = useState<number[]>([]);
+  const [pendingMgr, setPendingMgr] = useState<number | null>(null);
+  const currentMgr = value?.id ? s.managersOf(value.id)[0] : undefined;
   if (value !== lastOpen) { if (value) { setMgr(value.id ? s.managersOf(value.id)[0]?.id ?? "" : ""); setBrokers(value.id ? s.brokersOf(value.id).map((u) => u.id) : []); } setLastOpen(value); if (value) { setF({ usage: "residential", type: "Apartment", emirate: "Dubai", status: "vacant", landlord_id: s.landlords[0]?.id, bedrooms: 1, size_sqft: 0, rental_value: 0, ...value }); setFiles([]); } }
   const set = (k: keyof Property, v: unknown) => setF((x) => ({ ...x, [k]: v }));
   // Step 3 control: property/unit IDs must be unique.
@@ -75,8 +78,12 @@ export function PropertyDialog({ value, onClose }: { value: Partial<Property> | 
         <Field label="Title deed no."><Input value={f.title_deed_no ?? ""} onChange={(e) => set("title_deed_no", e.target.value)} /></Field>
         <Field label="DEWA premise no."><Input value={f.dewa_premise_no ?? ""} onChange={(e) => set("dewa_premise_no", e.target.value)} placeholder="9 digits" /></Field>
         <Field label="Property Manager">
-          <NSelect value={mgr} onChange={(v) => setMgr(v ? Number(v) : "")} options={[{ value: "", label: "Not assigned" }, ...s.users.filter((u) => u.role === "manager" && u.active && u.property_access === "selected").map((u) => ({ value: u.id, label: u.name }))]} />
+          <NSelect value={mgr} onChange={(v) => { const next = v ? Number(v) : ""; if (currentMgr && next !== "" && next !== currentMgr.id) setPendingMgr(next); else setMgr(next); }} options={[{ value: "", label: "Not assigned" }, ...s.users.filter((u) => u.role === "manager" && u.active && u.property_access === "selected").map((u) => ({ value: u.id, label: u.name }))]} />
         </Field>
+        {pendingMgr != null && currentMgr && value?.id && (
+          <ReassignConfirm moves={[{ propertyId: value.id, from: currentMgr.name }]} to={s.users.find((u) => u.id === pendingMgr)?.name ?? ""}
+            onCancel={() => setPendingMgr(null)} onConfirm={() => { setMgr(pendingMgr); setPendingMgr(null); }} />)}
+        {currentMgr && mgr === "" && <p className="col-span-2 -mt-1 text-xs text-[#9a6a1f]">{currentMgr.name} will be removed from this property when you save.</p>}
         <Field label="Brokers">
           <div className="flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-input px-3 py-2 text-sm">
             {s.users.filter((u) => u.role === "broker" && u.active).map((u) => <label key={u.id} className="flex items-center gap-1.5"><input type="checkbox" checked={brokers.includes(u.id)} onChange={(e) => setBrokers((b) => (e.target.checked ? [...b, u.id] : b.filter((x) => x !== u.id)))} />{u.name}</label>)}
