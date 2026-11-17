@@ -30,13 +30,14 @@ export function PropertiesPage({ go }: { go: (to: string) => void }) {
         <NSelect className="w-56" value={landlord} onChange={setLandlord} options={[{ value: "all", label: "All landlords" }, ...s.landlords.map((l) => ({ value: l.id, label: l.name }))]} />
         {!s.restricted && <NSelect className="w-56" value={manager} onChange={setManager} options={[{ value: "all", label: "All managers" }, { value: "none", label: `No assigned manager (${s.visibleProperties.filter((p) => !s.managersOf(p.id).length).length})` }, ...s.users.filter((u) => u.role === "manager" && u.property_access === "selected").map((u) => ({ value: u.id, label: u.name }))]} />}
       </div>
-      <Table head={["Property", "Usage", "Location", "Landlord", "Manager", "Status", "Rental value", "Current tenant"]} empty={!rows.length}>
+      <Table head={["Property", "Usage", "Location", "Landlord", "Manager", "Brokers", "Status", "Rental value", "Current tenant"]} empty={!rows.length}>
         {rows.map((p) => { const c = s.activeContractFor(p.id); return (
           <tr key={p.id} className="cursor-pointer hover:bg-muted/40" onClick={() => go(`/properties/${p.id}`)}>
             <Td className="font-medium">{p.name} · {p.unit_no}<div className="text-xs font-normal text-muted-foreground">{p.type}{p.bedrooms ? ` · ${p.bedrooms} BR` : ""} · {p.size_sqft} sqft</div></Td>
             <Td><Pill tone={p.usage === "commercial" ? "violet" : "gray"}>{p.usage}</Pill></Td>
             <Td>{p.community}, {p.emirate}</Td><Td><L to={h.landlord(p.landlord_id)}>{s.landlord(p.landlord_id)?.name}</L></Td>
             <Td>{mgrName(p.id) || <span className="text-xs text-muted-foreground">Not assigned</span>}</Td>
+            <Td>{s.brokersOf(p.id).map((u) => u.name).join(", ") || <span className="text-xs text-muted-foreground">—</span>}</Td>
             <Td><StatusPill status={p.status} /></Td><Td className="tabular-nums">{aed(p.rental_value)}/yr</Td>
             <Td>{c ? s.tenantName(c.tenant_id) : "—"}</Td>
           </tr>); })}
@@ -53,7 +54,8 @@ export function PropertyDialog({ value, onClose }: { value: Partial<Property> | 
   const [lastOpen, setLastOpen] = useState<unknown>(null);
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [mgr, setMgr] = useState<number | "">("");
-  if (value !== lastOpen) { if (value) setMgr(value.id ? s.managersOf(value.id)[0]?.id ?? "" : ""); setLastOpen(value); if (value) { setF({ usage: "residential", type: "Apartment", emirate: "Dubai", status: "vacant", landlord_id: s.landlords[0]?.id, bedrooms: 1, size_sqft: 0, rental_value: 0, ...value }); setFiles([]); } }
+  const [brokers, setBrokers] = useState<number[]>([]);
+  if (value !== lastOpen) { if (value) { setMgr(value.id ? s.managersOf(value.id)[0]?.id ?? "" : ""); setBrokers(value.id ? s.brokersOf(value.id).map((u) => u.id) : []); } setLastOpen(value); if (value) { setF({ usage: "residential", type: "Apartment", emirate: "Dubai", status: "vacant", landlord_id: s.landlords[0]?.id, bedrooms: 1, size_sqft: 0, rental_value: 0, ...value }); setFiles([]); } }
   const set = (k: keyof Property, v: unknown) => setF((x) => ({ ...x, [k]: v }));
   // Step 3 control: property/unit IDs must be unique.
   const dup = s.properties.find((p) => p.id !== f.id && p.name.trim().toLowerCase() === (f.name ?? "").trim().toLowerCase() && p.unit_no.trim().toLowerCase() === (f.unit_no ?? "").trim().toLowerCase());
@@ -61,7 +63,7 @@ export function PropertyDialog({ value, onClose }: { value: Partial<Property> | 
   const valid = f.name && f.unit_no && f.landlord_id && !dup && !dupDewa;
   return (
     <Modal open={!!value} onClose={onClose} title={value?.id ? "Edit property" : "Add property"}
-      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!valid} onClick={() => { const saved = s.saveProperty(f as Property); s.assignManager(saved.id, mgr === "" ? null : mgr); attachUploads(s, "property", saved.id, files); s.notify("Property saved", `${f.name} · ${f.unit_no}`); onClose(); }}>Save</Button></>}>
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!valid} onClick={() => { const saved = s.saveProperty(f as Property); s.assignManager(saved.id, mgr === "" ? null : mgr); s.setBrokersForProperty(saved.id, brokers); attachUploads(s, "property", saved.id, files); s.notify("Property saved", `${f.name} · ${f.unit_no}`); onClose(); }}>Save</Button></>}>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Building / property name" className="col-span-2"><Input value={f.name ?? ""} onChange={(e) => set("name", e.target.value)} /></Field>
         <Field label="Unit no."><Input value={f.unit_no ?? ""} onChange={(e) => set("unit_no", e.target.value)} /></Field>
@@ -75,7 +77,11 @@ export function PropertyDialog({ value, onClose }: { value: Partial<Property> | 
         <Field label="Property Manager">
           <NSelect value={mgr} onChange={(v) => setMgr(v ? Number(v) : "")} options={[{ value: "", label: "Not assigned" }, ...s.users.filter((u) => u.role === "manager" && u.active && u.property_access === "selected").map((u) => ({ value: u.id, label: u.name }))]} />
         </Field>
-        <Field label="Assigned broker"><NSelect value={f.broker_user_id ?? ""} onChange={(v) => set("broker_user_id", v ? Number(v) : null)} options={[{ value: "", label: "None" }, ...s.users.filter((u) => u.role === "broker").map((u) => ({ value: u.id, label: u.name }))]} /></Field>
+        <Field label="Brokers">
+          <div className="flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-input px-3 py-2 text-sm">
+            {s.users.filter((u) => u.role === "broker" && u.active).map((u) => <label key={u.id} className="flex items-center gap-1.5"><input type="checkbox" checked={brokers.includes(u.id)} onChange={(e) => setBrokers((b) => (e.target.checked ? [...b, u.id] : b.filter((x) => x !== u.id)))} />{u.name}</label>)}
+          </div>
+        </Field>
         {(dup || dupDewa) && <p className="col-span-2 rounded-2xl bg-[#f6e1d8] px-3 py-2 text-xs text-[#9a3f22]">{dup ? `${dup.name} · ${dup.unit_no} is already registered.` : `DEWA premise ${f.dewa_premise_no} is already linked to ${dupDewa!.name} · ${dupDewa!.unit_no}.`}</p>}
         <Field label="Status"><NSelect value={f.status ?? ""} onChange={(v) => set("status", v as PropertyStatus)} options={[{ value: "vacant", label: "Vacant" }, { value: "rented", label: "Rented" }, { value: "occupied", label: "Occupied (owner)" }]} /></Field>
         <Field label="Bedrooms"><Input type="number" value={f.bedrooms ?? 0} onChange={(e) => set("bedrooms", Number(e.target.value))} /></Field>

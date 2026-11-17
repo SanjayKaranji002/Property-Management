@@ -62,7 +62,7 @@ function partiesFor(s: Store, ev: NotifyEvent) {
     : s.contracts.find((c) => c.tenant_id === ev.tenantId && c.status === "active");
   const tenantId = ev.kind === "document" ? ev.tenantId : contract?.tenant_id;
   const property = contract ? s.property(contract.property_id) : undefined;
-  const brokerIds = new Set(s.users.filter((u) => u.role === "broker" && (u.id === property?.broker_user_id || (property && u.property_ids?.includes(property.id)))).map((u) => u.id));
+  const brokerIds = new Set(property ? s.brokersOf(property.id).map((u) => u.id) : []);
   const out: Partial<Record<RecipientType, Recipient[]>> = {
     tenant: s.recipients("tenant").filter((r) => r.id === tenantId),
     landlord: s.recipients("landlord").filter((r) => r.id === property?.landlord_id),

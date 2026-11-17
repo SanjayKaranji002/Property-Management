@@ -36,7 +36,7 @@ export interface Property {
   id: number; landlord_id: number; name: string; unit_no: string; usage: Usage;
   type: string; community: string; emirate: string; title_deed_no: string;
   bedrooms: number; size_sqft: number; rental_value: number; status: PropertyStatus;
-  dewa_premise_no: string; broker_user_id?: number | null;
+  dewa_premise_no: string;
 }
 export interface Tenant {
   id: number; first_name: string; last_name: string; email: string; phone: string;
@@ -221,7 +221,7 @@ export const seedLandlords: Landlord[] = [
 ];
 
 const P = (id: number, landlord_id: number, name: string, unit_no: string, usage: Usage, type: string, community: string, emirate: string, bedrooms: number, size_sqft: number, rental_value: number, status: PropertyStatus): Property =>
-  ({ id, landlord_id, name, unit_no, usage, type, community, emirate, title_deed_no: `TD-${100200 + id}`, bedrooms, size_sqft, rental_value, status, dewa_premise_no: emirate === "Dubai" ? `6${String(81234500 + id * 37)}` : "", broker_user_id: id % 3 === 0 ? 7 : null });
+  ({ id, landlord_id, name, unit_no, usage, type, community, emirate, title_deed_no: `TD-${100200 + id}`, bedrooms, size_sqft, rental_value, status, dewa_premise_no: emirate === "Dubai" ? `6${String(81234500 + id * 37)}` : "" });
 
 export const seedProperties: Property[] = [
   P(1, 1, "Marina Heights", "1204", "residential", "Apartment", "Dubai Marina", "Dubai", 2, 1250, 120000, "rented"),

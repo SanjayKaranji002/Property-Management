@@ -198,7 +198,7 @@ export function UsersPage() {
 }
 
 /** Pick properties one by one, or a landlord's whole portfolio at once. */
-function PropertyChecklist({ ids, onChange }: { ids: number[]; onChange: (ids: number[]) => void }) {
+export function PropertyChecklist({ ids, onChange, note }: { ids: number[]; onChange: (ids: number[]) => void; note?: (propertyId: number) => string | undefined }) {
   const s = useStore();
   const [q, setQ] = useState("");
   const toggle = (id: number, on: boolean) => onChange(on ? [...new Set([...ids, id])] : ids.filter((x) => x !== id));
@@ -214,7 +214,7 @@ function PropertyChecklist({ ids, onChange }: { ids: number[]; onChange: (ids: n
       </div>
       <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search property, landlord or area" className="h-9" />
       <div className="grid max-h-48 grid-cols-1 gap-1 overflow-auto rounded-2xl border border-input p-2 text-sm sm:grid-cols-2">
-        {rows.map((p) => <label key={p.id} className="flex items-center gap-2"><input type="checkbox" checked={ids.includes(p.id)} onChange={(e) => toggle(p.id, e.target.checked)} /><span className="min-w-0 truncate">{s.propLabel(p.id)} <span className="text-xs text-muted-foreground">· {s.landlord(p.landlord_id)?.name}</span></span></label>)}
+        {rows.map((p) => <label key={p.id} className="flex items-center gap-2"><input type="checkbox" checked={ids.includes(p.id)} onChange={(e) => toggle(p.id, e.target.checked)} /><span className="min-w-0 truncate">{s.propLabel(p.id)} <span className="text-xs text-muted-foreground">· {s.landlord(p.landlord_id)?.name}</span>{note?.(p.id) && <span className="text-xs text-[#9a6a1f]"> · {note(p.id)}</span>}</span></label>)}
       </div>
     </div>
   );
@@ -228,7 +228,7 @@ function UserDialog({ value, onClose }: { value: Partial<User> | null; onClose: 
   const set = (k: keyof User, v: unknown) => setF((x) => ({ ...x, [k]: v }));
   return (
     <Modal open={!!value} onClose={onClose} title={value?.id ? "Edit user" : "Add user"}
-      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!f.name || !f.email} onClick={() => { s.saveUser(f as User); s.notify("User saved", value?.id ? "" : `Invitation emailed to ${f.email}`); onClose(); }}>Save</Button></>}>
+      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!f.name || !f.email} onClick={() => { const saved = s.saveUser(f as User); if (saved.role === "manager") s.setManagerProperties(saved.id, saved.property_access ?? "all", saved.property_ids ?? []); s.notify("User saved", value?.id ? "" : `Invitation emailed to ${f.email}`); onClose(); }}>Save</Button></>}>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Name"><Input value={f.name ?? ""} onChange={(e) => set("name", e.target.value)} /></Field>
         <Field label="Email (login)"><Input type="email" value={f.email ?? ""} onChange={(e) => set("email", e.target.value)} /></Field>
@@ -239,7 +239,7 @@ function UserDialog({ value, onClose }: { value: Partial<User> | null; onClose: 
             <ViaPicker value={f.property_access ?? "all"} onChange={(v) => set("property_access", v)} options={[{ value: "all", label: "All properties" }, { value: "selected", label: "Selected properties" }]} />
           </Field>)}
         {(f.role === "broker" || (f.role === "manager" && f.property_access === "selected")) && (
-          <PropertyChecklist ids={f.property_ids ?? []} onChange={(ids) => set("property_ids", ids)} />)}
+          <PropertyChecklist ids={f.property_ids ?? []} onChange={(ids) => set("property_ids", ids)} note={f.role === "manager" ? (pid) => { const o = s.managersOf(pid).find((u) => u.id !== f.id); return o ? `now ${o.name}, will move` : undefined; } : undefined} />)}
         {f.role === "landlord" && <Field label="Landlord"><NSelect value={f.landlord_id ?? ""} onChange={(v) => set("landlord_id", Number(v))} options={[{ value: "", label: "Select…" }, ...s.landlords.map((l) => ({ value: l.id, label: l.name }))]} /></Field>}
         {f.role === "tenant" && <Field label="Tenant"><NSelect value={f.tenant_id ?? ""} onChange={(v) => set("tenant_id", Number(v))} options={[{ value: "", label: "Select…" }, ...s.tenants.map((t) => ({ value: t.id, label: `${t.first_name} ${t.last_name}` }))]} /></Field>}
         <label className="col-span-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={!!f.active} onChange={(e) => set("active", e.target.checked)} />Active</label>

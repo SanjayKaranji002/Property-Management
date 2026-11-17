@@ -123,7 +123,7 @@ function importRows(s: Store, kind: Kind, rows: CsvRow[]): number {
         landlord_id: lid, name: r.building.trim(), unit_no: r.unit.trim(), usage: (norm(r.usage) || "residential") as Property["usage"], type: r.type || "Apartment",
         community: r.community ?? "", emirate: EMIRATES.find((x) => norm(x) === norm(r.emirate))!, title_deed_no: r.title_deed_no ?? "",
         bedrooms: Number(r.bedrooms) || 0, size_sqft: Number(r.size_sqft) || 0, rental_value: money(r.annual_rent),
-        status: (norm(r.status) || "vacant") as Property["status"], dewa_premise_no: r.dewa_premise_no ?? "", broker_user_id: null,
+        status: (norm(r.status) || "vacant") as Property["status"], dewa_premise_no: r.dewa_premise_no ?? "",
       } as Omit<Property, "id">);
     }
     if (kind === "tenants") {

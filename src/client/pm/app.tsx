@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState, type ComponentType, type ReactElement } from "react";
-import {
-  Bell, Building2, ChevronDown, ContactRound, FileText, FolderOpen, Headphones, Home, Landmark, LayoutDashboard,
-  Menu, MessageCircle, Moon, Settings as SettingsIcon, ShieldCheck, Sun, Users, Wallet, X, Zap,
-} from "lucide-react";
+import {  Bell, Building2, ChevronDown, ContactRound, FileText, FolderOpen, Headphones, Home, Landmark, LayoutDashboard,
+  Menu, MessageCircle, Moon, Settings as SettingsIcon, ShieldCheck, Sun, Users, Wallet, X, Zap, Handshake, UserCog } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StoreProvider, useStore } from "./store";
 import { NavContext } from "./nav";
@@ -14,6 +12,7 @@ import { ContractsPage } from "./pages/contracts";
 import { PaymentsPage, UtilitiesPage } from "./pages/finance";
 import { CommunicationsPage, DocumentsPage, SettingsPage, UsersPage } from "./pages/admin";
 import { EjariDewaPage } from "./pages/tracking";
+import { TeamPage } from "./pages/team";
 import { LandlordContracts, LandlordDocuments, LandlordPayments, TenantHome } from "./pages/portals";
 
 type NavItem = { href: string; label: string; icon: ComponentType<{ className?: string }>; module?: Module; adminOnly?: boolean };
@@ -30,6 +29,8 @@ const STAFF_NAV: NavItem[] = [
   { href: "/documents", label: "Documents", icon: FolderOpen, module: "documents" },
   { href: "/communications", label: "WhatsApp", icon: MessageCircle, module: "communications" },
   { href: "/users", label: "Users & access", icon: ShieldCheck, module: "users" },
+  { href: "/managers", label: "Property Managers", icon: UserCog, adminOnly: true },
+  { href: "/brokers", label: "Brokers", icon: Handshake, adminOnly: true },
   { href: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
 ];
 const LANDLORD_NAV: NavItem[] = [
@@ -123,6 +124,8 @@ function Shell() {
       case "/communications": return guard("communications", <CommunicationsPage />);
       case "/users": return guard("users", <UsersPage />);
       case "/settings": return role === "admin" ? <SettingsPage /> : <NoAccess />;
+      case "/managers": return role === "admin" ? <TeamPage role="manager" /> : <NoAccess />;
+      case "/brokers": return role === "admin" ? <TeamPage role="broker" /> : <NoAccess />;
       default: return <Dashboard go={go} />;
     }
   })();

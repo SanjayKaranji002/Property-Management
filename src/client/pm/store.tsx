@@ -246,6 +246,30 @@ function useStoreValue() {
   const seesLandlord = (landlordId: number | null | undefined) => !restricted || visibleProperties.some((p) => p.landlord_id === landlordId);
   /** Property Managers limited to a property (the ones listed on it). */
   const managersOf = (propertyId: number) => users.filter((u) => u.role === "manager" && u.property_access === "selected" && u.property_ids?.includes(propertyId));
+  /** Brokers working on a property (any number). */
+  const brokersOf = (propertyId: number) => users.filter((u) => u.role === "broker" && u.property_ids?.includes(propertyId));
+  /**
+   * Gives a manager "all" properties, or exactly `ids`. One manager per property:
+   * each of those properties leaves any other manager limited to selected properties.
+   */
+  const setManagerProperties = (managerId: number, access: "all" | "selected", ids: number[]) => {
+    setUsers((us) => us.map((u) => {
+      if (u.id === managerId) return { ...u, property_access: access, property_ids: access === "selected" ? ids : u.property_ids };
+      if (access === "selected" && u.role === "manager" && u.property_access === "selected" && u.property_ids?.some((x) => ids.includes(x)))
+        return { ...u, property_ids: u.property_ids.filter((x) => !ids.includes(x)) };
+      return u;
+    }));
+  };
+  /** Sets exactly which brokers work on a property. */
+  const setBrokersForProperty = (propertyId: number, brokerIds: number[]) => {
+    setUsers((us) => us.map((u) => {
+      if (u.role !== "broker") return u;
+      const has = !!u.property_ids?.includes(propertyId), want = brokerIds.includes(u.id);
+      if (want && !has) return { ...u, property_ids: [...(u.property_ids ?? []), propertyId] };
+      if (!want && has) return { ...u, property_ids: (u.property_ids ?? []).filter((x) => x !== propertyId) };
+      return u;
+    }));
+  };
   /** Assign a property to one manager (or none): only "selected" managers' lists change. */
   const assignManager = (propertyId: number, managerId: number | null) => {
     setUsers((us) => us.map((u) => {
@@ -258,7 +282,7 @@ function useStoreValue() {
   };
 
   return {
-    landlords, properties, tenants, contracts, installments, receipts, utilities, visibleProperties, restricted, seesContract, seesTenant, seesLandlord, managersOf, assignManager, canApprove, overlapFor,
+    landlords, properties, tenants, contracts, installments, receipts, utilities, visibleProperties, restricted, seesContract, seesTenant, seesLandlord, managersOf, assignManager, brokersOf, setManagerProperties, setBrokersForProperty, canApprove, overlapFor,
     addReceipt, setReceiptStatus, closeContract, patchContract, docs, messages, users, settings,
     me, setCurrentUserId, toasts, notify, alert, can,
     /** The signed-in person's notifications only. */
