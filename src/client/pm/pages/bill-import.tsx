@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { readBill, type ParsedBill } from "../bills";
-import { aed, aedExact, fmtDate, PROVIDER_BY_EMIRATE, today, UTIL_LABEL, type Contract, type UtilityBill, type UtilityType } from "../data";
+import { aed, aedExact, fmtDate, PROVIDER_BY_EMIRATE, today, UTIL_LABEL, type Contract, type UtilityBill, type UtilityType, iso8601 } from "../data";
 import { useStore, type Store } from "../store";
 import { Modal, NSelect, Pill } from "../ui";
 
@@ -14,7 +14,11 @@ interface Row {
   parsed: ParsedBill | null;
   contractId: number | null;
   /** How the tenancy was found; null = chosen by hand. */
-  matchedBy: "account" | "premise" | "name" | "property" | null;
+  matchedBy: "premise" | "account" | "name" | "property" | "group" | null;
+  /** A best guess from the bill's text that someone should confirm. */
+  suggested: boolean;
+  /** Why there is no match / where the match came from. */
+  note: string;
   provider: string; period: string;
   electricity: number; water: number; total: number; dueDate: string;
   paidAmount: number; paidOn: string;
@@ -27,25 +31,64 @@ interface Row {
 const month = (p: string) => (p ? new Date(`${p}-01T00:00:00`).toLocaleDateString("en-GB", { month: "short", year: "numeric" }) : "");
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
+/** First and last day of a YYYY-MM month. */
+const monthRange = (p: string | null | undefined): [string, string] | null =>
+  p ? [`${p}-01`, iso8601(new Date(+p.slice(0, 4), +p.slice(5, 7), 0))] : null;
+
+/**
+ * The tenancy of a property running during the bill's month (sub-lets excluded).
+ * If a move-out and a move-in fall in the same month, the newer tenancy is used.
+ */
+function tenancyDuring(s: Store, propertyId: number, period: string | null | undefined): Contract | undefined {
+  const r = monthRange(period);
+  return s.contracts
+    .filter((c) => c.property_id === propertyId && c.role !== "sub_tenant" && c.approval !== "draft")
+    .filter((c) => (r ? c.start_date <= r[1] && c.end_date >= r[0] : c.status === "active"))
+    .sort((a, b) => b.start_date.localeCompare(a.start_date))[0];
+}
+
+type Match = { contract: Contract | null; by: Row["matchedBy"]; sure: boolean; note: string } | null;
+
 /**
  * Find the tenancy a bill belongs to, strongest evidence first:
- * account number → premise number → the tenant's name on the bill → the building and unit.
- * Only a single, unambiguous match is used.
+ *  1. premise number → the property → the tenancy running that month (premise numbers never change)
+ *  2. account number → the tenancy with that account (accounts change with each tenant)
+ *  3. a suggestion from the bill's text (tenant name, building, unit) to confirm with one click
  */
-function matchContract(s: Store, p: ParsedBill): { contract: Contract; by: Row["matchedBy"] } | null {
-  const pick = (list: Contract[]) => { const live = list.filter((c) => c.status === "active"); return (live.length ? live : list).length === 1 ? (live.length ? live : list)[0] : undefined; };
-  const premiseOf = (c: Contract) => s.property(c.property_id)?.dewa_premise_no ?? "";
-  if (p.account) {
-    const c = pick(s.contracts.filter((x) => x.dewa_account === p.account)) ?? pick(s.contracts.filter((x) => premiseOf(x) === p.account));
-    if (c) return { contract: c, by: "account" };
+function matchContract(s: Store, p: ParsedBill): Match {
+  const r = monthRange(p.period);
+  const inMonth = (c: Contract) => (r ? c.start_date <= r[1] && c.end_date >= r[0] : c.status === "active");
+
+  for (const key of [p.premise, p.account]) {
+    if (!key) continue;
+    const prop = s.properties.find((x) => x.dewa_premise_no && x.dewa_premise_no.replace(/\s/g, "") === key);
+    if (!prop) continue;
+    const c = tenancyDuring(s, prop.id, p.period);
+    return c
+      ? { contract: c, by: "premise", sure: true, note: "" }
+      : { contract: null, by: null, sure: false, note: `Premise ${key} is ${s.propLabel(prop.id)}, but it had no tenancy in ${month(p.period ?? "")}.` };
   }
-  if (p.premise) { const c = pick(s.contracts.filter((x) => premiseOf(x) === p.premise)); if (c) return { contract: c, by: "premise" }; }
+
+  if (p.account) {
+    const withAcc = s.contracts.filter((x) => x.dewa_account === p.account);
+    const c = withAcc.filter(inMonth).sort((a, b) => b.start_date.localeCompare(a.start_date))[0] ?? (withAcc.length === 1 ? withAcc[0] : undefined);
+    if (c) return { contract: c, by: "account", sure: true, note: "" };
+  }
+
+  // Suggestion: score each tenancy running that month by what the bill's text mentions.
   const text = ` ${norm(`${p.customerName ?? ""} ${p.text}`)} `;
-  const active = s.contracts.filter((c) => c.status === "active");
-  const byName = active.filter((c) => { const n = norm(s.tenantName(c.tenant_id)); return n.length > 4 && text.includes(` ${n} `); });
-  if (byName.length === 1) return { contract: byName[0], by: "name" };
-  const byProp = active.filter((c) => { const pr = s.property(c.property_id); return !!pr && text.includes(norm(pr.name)) && text.includes(` ${norm(pr.unit_no)} `); });
-  if (byProp.length === 1) return { contract: byProp[0], by: "property" };
+  const has = (w: string) => w.length > 1 && text.includes(` ${norm(w)} `);
+  let best: { c: Contract; score: number; by: "name" | "property" } | null = null, tie = false;
+  for (const c of s.contracts.filter((x) => inMonth(x) && x.role !== "sub_tenant")) {
+    const t = s.tenant(c.tenant_id); const pr = s.property(c.property_id);
+    let score = 0, by: "name" | "property" = "property";
+    if (t && has(`${t.first_name} ${t.last_name}`)) { score += 3; by = "name"; } else if (t && t.last_name.length > 3 && has(t.last_name)) score += 1;
+    if (pr && has(pr.name)) score += 2;
+    if (pr && has(pr.unit_no)) score += 1;
+    if (score < 2) continue;
+    if (!best || score > best.score) { best = { c, score, by }; tie = false; } else if (score === best.score) tie = true;
+  }
+  if (best && !tie) return { contract: best.c, by: best.by, sure: false, note: "" };
   return null;
 }
 
@@ -81,7 +124,8 @@ export function settleFromNextBill(s: Store, contractId: number, beforePeriod: s
 }
 
 const MATCH_LABEL: Record<NonNullable<Row["matchedBy"]>, string> = {
-  account: "matched by account number", premise: "matched by premise number", name: "matched by tenant name on the bill", property: "matched by building and unit on the bill",
+  premise: "matched by premise number (tenancy running that month)", account: "matched by account number",
+  name: "matched by tenant name on the bill", property: "matched by building and unit on the bill", group: "same number as another bill in this import",
 };
 
 export function BillImportDialog({ onClose }: { onClose: () => void }) {
@@ -95,7 +139,7 @@ export function BillImportDialog({ onClose }: { onClose: () => void }) {
   async function add(list: FileList | null) {
     const files = Array.from(list ?? []).filter((f) => f.size <= 10 * 1024 * 1024);
     const fresh: Row[] = files.map((file) => ({
-      key: `${file.name}-${file.size}-${Math.random()}`, file, url: "", status: "reading", parsed: null, contractId: null, matchedBy: null,
+      key: `${file.name}-${file.size}-${Math.random()}`, file, url: "", status: "reading", parsed: null, contractId: null, matchedBy: null, suggested: false, note: "",
       provider: "", period: "", electricity: 0, water: 0, total: 0, dueDate: "", paidAmount: 0, paidOn: "", skip: false, alreadyPaid: false, alreadyPaidOn: "", open: "",
     }));
     setRows((r) => [...r, ...fresh]);
@@ -106,7 +150,7 @@ export function BillImportDialog({ onClose }: { onClose: () => void }) {
       const provider = p.provider ?? (c ? PROVIDER_BY_EMIRATE[s.property(c.property_id)?.emirate ?? ""] ?? "" : "");
       const total = p.total ?? (p.electricity ?? 0) + (p.water ?? 0);
       setRows((rs) => rs.map((r) => (r.key !== row.key ? r : {
-        ...r, status: "ready", parsed: p, url, contractId: c?.id ?? null, matchedBy: m?.by ?? null, provider, period: p.period ?? "",
+        ...r, status: "ready", parsed: p, url, contractId: c?.id ?? null, matchedBy: m?.by ?? null, suggested: !!c && !m?.sure, note: m?.note ?? "", provider, period: p.period ?? "",
         electricity: p.electricity ?? 0, water: p.water ?? 0, total, dueDate: p.dueDate ?? "", paidAmount: p.paidAmount ?? 0, paidOn: p.paidOn ?? "",
         // Open the details straight away only when something has to be typed in.
         open: !p.textFound || !p.period || !total ? "details" : "",
@@ -115,9 +159,34 @@ export function BillImportDialog({ onClose }: { onClose: () => void }) {
   }
   const update = (key: string, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
+  /**
+   * Sets the tenancy for one bill, and for every other bill in this import
+   * with the same account number (same tenant) or premise number (same
+   * property, tenancy picked by each bill's month) that isn't settled yet.
+   */
+  function choose(key: string, contractId: number | null) {
+    setRows((rs) => {
+      const src = rs.find((x) => x.key === key)!;
+      const c = contractId ? s.contract(contractId) : undefined;
+      const acc = src.parsed?.account, prem = src.parsed?.premise;
+      return rs.map((r) => {
+        if (r.key === key) return { ...r, contractId, matchedBy: null, suggested: false, note: "" };
+        if (!c || r.status !== "ready" || (r.contractId && !r.suggested)) return r;
+        if (acc && r.parsed?.account === acc) return { ...r, contractId: c.id, matchedBy: "group", suggested: false, note: `Same account as ${src.file.name}` };
+        if (prem && r.parsed?.premise === prem) {
+          const t = tenancyDuring(s, c.property_id, r.period);
+          if (t) return { ...r, contractId: t.id, matchedBy: "group", suggested: false, note: `Same premise as ${src.file.name}` };
+        }
+        return r;
+      });
+    });
+  }
+  const suggestions = rows.filter((r) => r.status === "ready" && !r.skip && r.suggested).length;
+
   const problems = (r: Row) => {
     const out: string[] = [];
     if (!r.contractId) out.push("Choose the tenancy");
+    else if (r.suggested) out.push("Confirm the suggested tenancy");
     if (!r.period) out.push("Add the billing month");
     if (!chargesFor(r).length) out.push("Add the amount");
     if (r.contractId && r.period && chargesFor(r).length && duplicateOf(s, r).length === chargesFor(r).length) out.push("Already recorded");
@@ -149,9 +218,15 @@ export function BillImportDialog({ onClose }: { onClose: () => void }) {
         s.patchContract(c.id, { dewa_account: r.parsed.account });
         learned++;
       }
+      // Learn the premise number on the property: it identifies every future bill for it, whoever the tenant is.
+      const prop = c ? s.property(c.property_id) : undefined;
+      if (prop && r.parsed?.premise && !prop.dewa_premise_no && !s.properties.some((x) => x.dewa_premise_no === r.parsed!.premise)) {
+        s.saveProperty({ ...prop, dewa_premise_no: r.parsed.premise });
+        learned++;
+      }
       if (r.paidAmount > 0) settledCount += settleFromNextBill(s, r.contractId!, r.period, r.paidAmount, r.paidOn || today(), `${r.provider} bill ${month(r.period)}`).length;
     }
-    s.notify("Bills imported", [`${charges} charge${charges === 1 ? "" : "s"} added`, paidCount && `${paidCount} already paid`, settledCount && `${settledCount} earlier bills marked paid`, learned && `${learned} account number${learned === 1 ? "" : "s"} saved for next time`].filter(Boolean).join(" · "));
+    s.notify("Bills imported", [`${charges} charge${charges === 1 ? "" : "s"} added`, paidCount && `${paidCount} already paid`, settledCount && `${settledCount} earlier bills marked paid`, learned && `${learned} account/premise number${learned === 1 ? "" : "s"} saved for next time`].filter(Boolean).join(" · "));
     onClose();
   }
 
@@ -173,6 +248,11 @@ export function BillImportDialog({ onClose }: { onClose: () => void }) {
         {!rows.length && <p className="text-xs text-muted-foreground">Each bill is read and matched to its tenancy. You only fill in what couldn't be read.</p>}
       </div>
 
+      {suggestions > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#e2c58f] bg-[#fbf6ec] px-4 py-2.5 text-sm dark:bg-[#2a2519]">
+          <span className="flex-1">{suggestions} bill{suggestions === 1 ? " has a" : "s have"} suggested tenanc{suggestions === 1 ? "y" : "ies"} — check them, then accept.</span>
+          <Button size="sm" onClick={() => setRows((rs) => rs.map((r) => (r.suggested ? { ...r, suggested: false } : r)))}><Check className="h-4 w-4" />Accept all suggestions</Button>
+        </div>)}
       {rows.length > 1 && (
         <label className="flex items-center gap-2 px-1 text-sm">
           <input type="checkbox" checked={rows.every((r) => r.alreadyPaid)} onChange={(e) => setRows((rs) => rs.map((r) => ({ ...r, alreadyPaid: e.target.checked })))} />
@@ -215,15 +295,18 @@ export function BillImportDialog({ onClose }: { onClose: () => void }) {
                   {/* Tenancy */}
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <span className="w-16 shrink-0 text-xs text-muted-foreground">Tenancy</span>
-                    <NSelect className={cn("h-9 min-w-0 flex-1", !r.contractId && "border-[#e2c58f] bg-[#fbf6ec] dark:bg-[#2a2519]")} value={r.contractId ?? ""}
-                      onChange={(v) => update(r.key, { contractId: v ? Number(v) : null, matchedBy: null })}
+                    <NSelect className={cn("h-9 min-w-0 flex-1", (!r.contractId || r.suggested) && "border-[#e2c58f] bg-[#fbf6ec] dark:bg-[#2a2519]")} value={r.contractId ?? ""}
+                      onChange={(v) => choose(r.key, v ? Number(v) : null)}
                       options={[{ value: "", label: "Choose the tenancy this bill is for…" }, ...tenancies.map((x) => ({ value: x.id, label: `${s.propLabel(x.property_id)} — ${s.tenantName(x.tenant_id)}${x.status !== "active" ? " (ended)" : ""}` }))]} />
                   </div>
-                  <p className="ml-[4.5rem] mt-1 text-xs text-muted-foreground">
-                    {r.contractId
-                      ? r.matchedBy ? `✓ ${MATCH_LABEL[r.matchedBy]}` : p?.account ? `Account ${p.account} will be saved to this tenancy, so next month's bill matches automatically.` : "Chosen by hand."
-                      : p?.account ? `No tenancy has account ${p.account} yet. Choose one and it will be remembered.` : "The account number couldn't be read from this bill."}
-                  </p>
+                  <div className="ml-[4.5rem] mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    {r.suggested
+                      ? <><Pill tone="amber">Suggested</Pill><span>from the {r.matchedBy === "name" ? "tenant's name" : "building and unit"} on the bill — please check.</span>
+                          <button className="font-medium text-[#1f3d2b] hover:underline dark:text-[#8fb89a]" onClick={() => choose(r.key, r.contractId)}>Confirm</button></>
+                      : <span>{r.contractId
+                          ? r.matchedBy === "group" ? `✓ ${r.note}` : r.matchedBy ? `✓ ${MATCH_LABEL[r.matchedBy]}` : (p?.premise || p?.account) ? "Chosen by hand — the bill's premise/account number will be remembered, and other bills with the same number in this import are filled in too." : "Chosen by hand."
+                          : r.note || (p?.premise || p?.account ? `No property or tenancy has ${p?.premise ? `premise ${p.premise}` : `account ${p?.account}`} yet. Choose one once and it will be remembered.` : "The account and premise numbers couldn't be read from this bill.")}</span>}
+                  </div>
 
                   {/* Options */}
                   <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/70 pt-3 text-xs">
