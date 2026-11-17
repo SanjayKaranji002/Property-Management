@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Link2, Plus, Send, Paperclip, Upload, FileUp, Receipt as ReceiptIcon } from "lucide-react";
+import { Plus, Send, Paperclip, Upload, FileUp, Receipt as ReceiptIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { aed, daysUntil, fmtDate, today, type Installment, type Receipt, type UtilityBill, PROVIDER_BY_EMIRATE, type Doc, UTIL_LABEL, aedExact } from "../data";
@@ -11,7 +11,6 @@ import { useStore } from "../store";
 import { L, useHref } from "../nav";
 import { Field, Modal, NSelect, Page, Pill, SearchBox, Stat, Table, Td, attachUploads, DocViewer, PendingUploads, type PendingFile } from "../ui";
 
-export const payLink = (i: Installment) => `${location.origin}/pay/${i.id}`;
 
 export function PaymentsPage() {
   const s = useStore();
@@ -19,7 +18,6 @@ export function PaymentsPage() {
   const [tab, setTab] = useState<"upcoming" | "overdue" | "paid" | "all" | "receipts">(() => (new URLSearchParams(location.search).get("tab") as "overdue") ?? "overdue");
   const [q, setQ] = useState("");
   const [paying, setPaying] = useState<Installment | null>(null);
-  const [linkFor, setLinkFor] = useState<Installment | null>(null);
   const visible = new Set(s.visibleProperties.map((p) => p.id));
   const active = s.installments.filter((i) => { const c = s.contract(i.contract_id); return c?.status === "active" && c.approval === "approved" && visible.has(c.property_id); });
   const rows = active.filter((i) => {
@@ -51,12 +49,10 @@ export function PaymentsPage() {
             <Td className="tabular-nums">{aed(i.amount)}</Td><Td className="tabular-nums">{aed(i.paid)}{i.method && <div className="text-xs text-muted-foreground">{i.method}</div>}</Td><Td className="tabular-nums font-medium">{aed(bal)}</Td>
             <Td>{bal <= 0 ? <Pill tone="green">Paid</Pill> : s.receipts.some((r) => r.installment_id === i.id && r.status === "received") ? <Pill tone="blue">Cheque to clear</Pill> : i.paid > 0 ? <Pill tone="amber">Part-paid</Pill> : d < 0 ? <Pill tone="red">{-d}d overdue</Pill> : <Pill tone={d <= 7 ? "amber" : "gray"}>in {d}d</Pill>}</Td>
             <Td>{bal > 0 && s.can("payments", "edit") && <div className="flex gap-1">
-              <Button size="sm" variant="outline" onClick={() => setPaying(i)}>Record</Button>
-              <Button size="sm" variant="ghost" onClick={() => setLinkFor(i)} aria-label="Payment link"><Link2 className="h-4 w-4" /></Button></div>}{bal > 0 && <div className="mt-1"><NotifyButton event={{ kind: "payment", installmentId: i.id }} /></div>}</Td>
+              <Button size="sm" variant="outline" onClick={() => setPaying(i)}>Record</Button></div>}{bal > 0 && <div className="mt-1"><NotifyButton event={{ kind: "payment", installmentId: i.id }} /></div>}</Td>
           </tr>); })}
       </Table>}
       <RecordPayment inst={paying} onClose={() => setPaying(null)} />
-      <PaymentLinkDialog inst={linkFor} onClose={() => setLinkFor(null)} />
     </Page>
   );
 }
@@ -74,7 +70,7 @@ function RecordPayment({ inst, onClose }: { inst: Installment | null; onClose: (
       footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={f.amount <= 0 || (needsRef && !f.reference)} onClick={() => { s.addReceipt({ installment_id: inst!.id, ...f }); onClose(); }}>Record</Button></>}>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Amount (AED)"><Input type="number" value={f.amount} onChange={(e) => set("amount", Number(e.target.value))} /></Field>
-        <Field label="Method"><NSelect value={f.method} onChange={(v) => set("method", v)} options={["Cheque", "Bank transfer", "Cash", "Card", "Payment link"]} /></Field>
+        <Field label="Method"><NSelect value={f.method} onChange={(v) => set("method", v)} options={["Cheque", "Bank transfer", "Cash", "Card"]} /></Field>
         <Field label={f.method === "Cheque" ? "Cheque no." : "Reference"}><Input value={f.reference} onChange={(e) => set("reference", e.target.value)} /></Field>
         <Field label="Bank"><Input value={f.bank} onChange={(e) => set("bank", e.target.value)} /></Field>
         <Field label={f.method === "Cheque" ? "Cheque date" : "Payment date"}><Input type="date" value={f.date} onChange={(e) => set("date", e.target.value)} /></Field>
@@ -118,49 +114,6 @@ function ReceiptsTable() {
           <p className="text-xs text-muted-foreground">The bounced cheque is kept in history as "replaced" so it is never counted twice.</p>
         </Modal>)}
     </>
-  );
-}
-
-export function PaymentLinkDialog({ inst, onClose }: { inst: Installment | null; onClose: () => void }) {
-  const s = useStore();
-  const h = useHref();
-  if (!inst) return null;
-  const c = s.contract(inst.contract_id)!;
-  const t = s.tenant(c.tenant_id);
-  const link = payLink(inst);
-  const text = `Dear ${s.tenantName(c.tenant_id)}, please pay AED ${s.balance(inst).toLocaleString()} for ${s.propLabel(c.property_id)} (instalment #${inst.no}) here: ${link}`;
-  return (
-    <Modal open onClose={onClose} title="Payment link (AED)"
-      footer={<><Button variant="outline" onClick={() => { navigator.clipboard?.writeText(link); s.notify("Copied", "Payment link copied"); }}>Copy link</Button>
-        <Button onClick={() => { s.sendMessage({ channel: "whatsapp", tenant_id: c.tenant_id, landlord_id: null, kind: "Payment link", body: text, status: "delivered" }); s.notify("Sent on WhatsApp", `to ${t?.phone}`); onClose(); }}><Send className="h-4 w-4" />Send via WhatsApp</Button></>}>
-      <div className="space-y-2 text-sm">
-        <Input readOnly value={link} />
-        <p className="rounded-2xl bg-muted p-3 text-muted-foreground">{text}</p>
-      </div>
-    </Modal>
-  );
-}
-
-/** Public tenant-facing checkout page (gateway placeholder). */
-export function PayPage({ id }: { id: number }) {
-  const s = useStore();
-  const h = useHref();
-  const [done, setDone] = useState(false);
-  const inst = s.installments.find((i) => i.id === id);
-  if (!inst) return <div className="p-10 text-center">Payment link not found.</div>;
-  const c = s.contract(inst.contract_id)!;
-  const bal = s.balance(inst);
-  return (
-    <div className="flex flex-1 items-center justify-center p-4">
-      <div className="w-full max-w-sm space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
-        <div className="text-sm text-muted-foreground">Rent payment</div>
-        <div className="text-3xl font-semibold tabular-nums">{aed(bal)}</div>
-        <div className="text-sm"><L to={h.property(c.property_id)}>{s.propLabel(c.property_id)}</L> · instalment #{inst.no}<br /><span className="text-muted-foreground">Due {fmtDate(inst.due_date)} · <L to={h.tenant(c.tenant_id)}>{s.tenantName(c.tenant_id)}</L></span></div>
-        {done || bal <= 0 ? <Pill tone="green">Paid — thank you</Pill> :
-          <Button className="w-full" onClick={() => { s.recordPayment(inst.id, bal, "Payment link"); setDone(true); }}>Pay {aed(bal)}</Button>}
-        <p className="text-xs text-muted-foreground">Payments are processed in UAE dirhams (AED) only.</p>
-      </div>
-    </div>
   );
 }
 

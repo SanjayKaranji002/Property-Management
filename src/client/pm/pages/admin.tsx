@@ -112,7 +112,7 @@ function TemplatesCard() {
         <Modal open onClose={() => setEditing(null)} title={`Template: ${editing.name}`}
           footer={<><Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button><Button onClick={() => { save({ ...editing, approved: false }); setEditing(null); }}>Save</Button></>}>
           <Textarea rows={5} value={editing.body} onChange={(e) => setEditing({ ...editing, body: e.target.value })} />
-          <p className="text-xs text-muted-foreground">Placeholders: {"{{tenant}} {{property}} {{amount}} {{no}} {{due_date}} {{days}} {{end_date}} {{link}} {{ref}}"}</p>
+          <p className="text-xs text-muted-foreground">Placeholders: {"{{tenant}} {{property}} {{amount}} {{no}} {{due_date}} {{days}} {{end_date}} {{payment_instructions}} {{ref}}"}</p>
         </Modal>)}
     </Card>
   );
@@ -271,6 +271,12 @@ export function SettingsPage() {
             <Field label="Overdue reminder every (days)"><Input type="number" min={1} value={st.overdue_every_days} onChange={(e) => set({ overdue_every_days: Math.max(1, Number(e.target.value)) })} /></Field>
           </div>
           <p className="mt-3 text-xs text-muted-foreground">{describeSchedule(st)}</p>
+        </Card>
+        <Card title="How tenants pay">
+          <Field label="Payment instructions">
+            <Textarea rows={3} value={st.payment_instructions} onChange={(e) => set({ payment_instructions: e.target.value })} placeholder="e.g. Pay by cheque or bank transfer to …, and share the receipt." />
+          </Field>
+          <p className="mt-2 text-xs text-muted-foreground">Added to rent reminders, Notify and message templates, landlord follow-ups and the tenant portal. Payments are recorded in Collections when they arrive — there is no online payment.</p>
         </Card>
         <Card title="Rent calculation">
           <div className="grid grid-cols-2 gap-3">

@@ -14,7 +14,7 @@ export type EjariStatus = "not_registered" | "registered" | "renewal_pending" | 
 export type DewaStatus = "not_linked" | "applied" | "deposit_paid" | "active" | "closed";
 export type ReceiptStatus = "received" | "cleared" | "bounced" | "replaced";
 export interface Receipt {
-  id: number; installment_id: number; date: string; amount: number; method: "Cheque" | "Bank transfer" | "Cash" | "Card" | "Payment link";
+  id: number; installment_id: number; date: string; amount: number; method: "Cheque" | "Bank transfer" | "Cash" | "Card";
   reference: string; bank: string; status: ReceiptStatus; replaces_id: number | null; note?: string;
 }
 export interface Template { id: number; name: string; trigger: string; body: string; approved: boolean }
@@ -123,6 +123,8 @@ export interface Settings {
   channels: Record<Channel, boolean>;
   /** How each automatic reminder goes out. */
   reminder_via: Record<ReminderType, SendVia>;
+  /** How tenants should pay; added to rent reminders and templates. */
+  payment_instructions: string;
   /** Per-person channel, keyed "<recipient type>-<id>" (e.g. "tenant-4"). Missing = the default for the reminder type. */
   contact_via: Record<string, SendVia>;
   /** Send due reminders automatically every day (no clicking). */
@@ -336,7 +338,7 @@ const perms = (edit: Module[], view: Module[] = []): Record<Module, Perm> =>
 
 export const defaultTemplates: Template[] = [
   { id: 1, name: "rent_due_reminder", trigger: "Before due date", approved: true, body: "Dear {{tenant}}, instalment #{{no}} of AED {{amount}} for {{property}} is due on {{due_date}}." },
-  { id: 2, name: "rent_overdue", trigger: "Overdue rent", approved: true, body: "Dear {{tenant}}, instalment #{{no}} of AED {{amount}} for {{property}} is {{days}} days overdue. Pay here: {{link}}" },
+  { id: 2, name: "rent_overdue", trigger: "Overdue rent", approved: true, body: "Dear {{tenant}}, instalment #{{no}} of AED {{amount}} for {{property}} is {{days}} days overdue. {{payment_instructions}}" },
   { id: 3, name: "contract_expiry", trigger: "Expiry / renewal", approved: true, body: "Dear {{tenant}}, your tenancy for {{property}} expires on {{end_date}}. Please confirm whether you wish to renew." },
   { id: 4, name: "cheque_bounced", trigger: "Bounced cheque", approved: false, body: "Dear {{tenant}}, cheque {{ref}} for AED {{amount}} was returned. Please arrange a replacement." },
 ];
@@ -371,6 +373,7 @@ export const defaultSettings: Settings = {
   landlord_access: { contracts: true, payments: true, documents: true, email_tenants: true, upload: false },
   channels: { whatsapp: true, email: true, sms: false, in_app: true },
   reminder_via: { upcoming: "both", overdue: "both", renewal: "both" },
+  payment_instructions: "Please pay by cheque or bank transfer as per your tenancy agreement, and share the receipt with us.",
   contact_via: { "tenant-8": "whatsapp", "landlord-4": "email" },
   auto_reminders: true,
   auto_time: "09:00",

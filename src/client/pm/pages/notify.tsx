@@ -6,7 +6,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { aed, daysUntil, fmtDate, RECIPIENT_LABEL, VIA_LABEL, type Channel, type Recipient, type RecipientType, type SendVia, agreementRef, UTIL_LABEL } from "../data";
 import { useStore, type Store } from "../store";
 import { Field, Modal, NSelect, Pill, ViaPicker } from "../ui";
-import { payLink } from "./finance";
 
 /** What the alert is about. */
 export type NotifyEvent =
@@ -17,7 +16,7 @@ export type NotifyEvent =
 
 type Ctx = {
   name: string; property: string; tenant: string; landlord: string; date: string; days: number;
-  amount: string; no: string; link: string; document: string; ejari: string; account: string;
+  amount: string; no: string; pay: string; document: string; ejari: string; account: string;
 };
 
 // ── Templates: one per alert type and recipient type ──────────────────
@@ -30,7 +29,7 @@ const T: Record<NotifyEvent["kind"], Record<RecipientType, { subject: string; bo
     finance: { subject: "Expiring agreement: {property}", body: "Hi {name},\n\nAgreement {ejari} for {property} ({tenant}) expires on {date}. Please review outstanding balances and the security deposit ahead of renewal or closure.\n\nThanks" },
   },
   payment: {
-    tenant: { subject: "Rent instalment {no} for {property}", body: "Dear {name},\n\nThis is a reminder that rent instalment #{no} of {amount} for {property} is due on {date}{late}.\n\nYou can pay securely here: {link}\n\nIf you have already paid, please ignore this message.\n\nKind regards,\nProperty Management" },
+    tenant: { subject: "Rent instalment {no} for {property}", body: "Dear {name},\n\nThis is a reminder that rent instalment #{no} of {amount} for {property} is due on {date}{late}.\n\n{pay}\n\nIf you have already paid, please ignore this message.\n\nKind regards,\nProperty Management" },
     landlord: { subject: "Rent status: {property}", body: "Dear {name},\n\nInstalment #{no} of {amount} from {tenant} for {property} is due on {date}{late}. We are following up with the tenant and will update you once it is received.\n\nKind regards,\nProperty Management" },
     broker: { subject: "Rent follow-up: {property}", body: "Hi {name},\n\nInstalment #{no} of {amount} from {tenant} for {property} is due on {date}{late}. As the broker on this unit, please help us follow up with the tenant.\n\nThanks" },
     manager: { subject: "Collect: {property} instalment {no}", body: "Hi {name},\n\nInstalment #{no} of {amount} from {tenant} for {property} is due on {date}{late}.\n\nPlease follow up with the tenant and record the receipt once received.\n\nThanks" },
@@ -82,7 +81,7 @@ function contextFor(s: Store, ev: NotifyEvent, who: Recipient | undefined): Ctx 
   return {
     name: who?.name ?? "", property: property ? s.propLabel(property.id) : "your property", tenant: s.tenantName(tenantId),
     landlord: s.landlord(property?.landlord_id)?.name ?? "", date: bill ? new Date(date + "T00:00:00").toLocaleDateString("en-GB", { month: "long", year: "numeric" }) + " bill" : fmtDate(date), days: bill ? 0 : daysUntil(date),
-    amount: inst ? aed(s.balance(inst)) : bill ? aed(bill.amount) : "", no: inst ? String(inst.no) : "", link: inst ? payLink(inst) : "",
+    amount: inst ? aed(s.balance(inst)) : bill ? aed(bill.amount) : "", no: inst ? String(inst.no) : "", pay: s.settings.payment_instructions,
     document: ev.kind === "document" ? ev.document : bill ? `${bill.provider} ${UTIL_LABEL[bill.type].toLowerCase()}` : "", account: contract?.dewa_account || "—", ejari: (contract ? agreementRef(contract) : "") ?? "",
   };
 }

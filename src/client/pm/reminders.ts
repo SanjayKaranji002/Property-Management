@@ -31,7 +31,8 @@ interface Ctx {
   tenantName: (tenantId: number) => string;
   /** A cheque is with the bank for this instalment: don't chase it. */
   awaitingClearance: (instalmentId: number) => boolean;
-  payLink: (instalmentId: number) => string;
+  /** How to pay (Settings → Payment instructions). */
+  payInstructions: string;
 }
 
 const fmt = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -51,13 +52,13 @@ export function dueRemindersFor(ctx: Ctx): DueReminder[] {
     const name = ctx.tenantName(c.tenant_id), where = ctx.propLabel(c.property_id);
     if (d >= 0 && d <= st.rent_days_before) {
       out.push({ key: `up-${i.id}`, type: "upcoming", kind: "Upcoming rent", tenant_id: c.tenant_id, contract_id: c.id,
-        body: `Dear ${name}, a reminder that rent instalment #${i.no} of AED ${bal.toLocaleString()} for ${where} is due on ${fmt(i.due_date)}. Pay securely here: ${ctx.payLink(i.id)}` });
+        body: `Dear ${name}, a reminder that rent instalment #${i.no} of AED ${bal.toLocaleString()} for ${where} is due on ${fmt(i.due_date)}. ${ctx.payInstructions}`.trim() });
     }
     if (d < 0) {
       const every = Math.max(1, st.overdue_every_days);
       const n = Math.floor((-d - 1) / every); // 0 = first notice, the day after the due date
       out.push({ key: `od-${i.id}-${n}`, type: "overdue", kind: n === 0 ? "Overdue rent" : `Overdue rent (follow-up ${n})`, tenant_id: c.tenant_id, contract_id: c.id,
-        body: `Dear ${name}, rent instalment #${i.no} of AED ${bal.toLocaleString()} for ${where} was due on ${fmt(i.due_date)} and is now ${-d} day${-d === 1 ? "" : "s"} overdue. Please pay here: ${ctx.payLink(i.id)}` });
+        body: `Dear ${name}, rent instalment #${i.no} of AED ${bal.toLocaleString()} for ${where} was due on ${fmt(i.due_date)} and is now ${-d} day${-d === 1 ? "" : "s"} overdue. ${ctx.payInstructions}`.trim() });
     }
   }
 

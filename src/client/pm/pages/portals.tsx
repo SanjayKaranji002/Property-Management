@@ -8,7 +8,6 @@ import { Card, DocumentsPanel, Page, Pill, Stat, StatusPill, Table, Td } from ".
 import { ContractView } from "./contracts";
 import { ComposeDialog } from "./admin";
 import { PayBillButton, ReportPaymentDialog, useUtilityAccount } from "./utility-pay";
-import { payLink } from "./finance";
 
 // ── Landlord portal: own properties only ─────────────────────────────
 
@@ -57,7 +56,7 @@ export function LandlordPayments({ landlordId }: { landlordId: number }) {
           {pending.map((i) => { const c = s.contract(i.contract_id)!; return (
             <tr key={i.id}><Td><L to={h.property(c.property_id)}>{s.propLabel(c.property_id)}</L></Td><Td><L to={h.tenant(c.tenant_id)}>{s.tenantName(c.tenant_id)}</L></Td><Td>{i.no}</Td><Td>{fmtDate(i.due_date)}</Td><Td className="tabular-nums">{aed(s.balance(i))}</Td>
               <Td>{s.isOverdue(i) ? <Pill tone="red">Overdue</Pill> : <Pill>Upcoming</Pill>}</Td>
-              <Td>{s.isOverdue(i) && s.settings.landlord_access.email_tenants && <Button size="sm" variant="outline" onClick={() => { s.sendMessage({ channel: "email", tenant_id: c.tenant_id, landlord_id: landlordId, kind: "Landlord follow-up", body: `Dear ${s.tenantName(c.tenant_id)}, instalment #${i.no} (AED ${s.balance(i).toLocaleString()}) for ${s.propLabel(c.property_id)} is overdue. Please pay here: ${payLink(i)}` }); s.notify("Follow-up sent", s.tenantName(c.tenant_id)); }}>Follow up</Button>}</Td>
+              <Td>{s.isOverdue(i) && s.settings.landlord_access.email_tenants && <Button size="sm" variant="outline" onClick={() => { s.sendMessage({ channel: "email", tenant_id: c.tenant_id, landlord_id: landlordId, kind: "Landlord follow-up", body: `Dear ${s.tenantName(c.tenant_id)}, instalment #${i.no} (AED ${s.balance(i).toLocaleString()}) for ${s.propLabel(c.property_id)} is overdue. ${s.settings.payment_instructions}` }); s.notify("Follow-up sent", s.tenantName(c.tenant_id)); }}>Follow up</Button>}</Td>
             </tr>); })}
         </Table>
       </Card>
@@ -103,7 +102,7 @@ export function TenantHome({ tenantId }: { tenantId: number }) {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Stat label="Next rent due" value={next ? aed(s.balance(next)) : "Nothing due"} sub={next ? `${fmtDate(next.due_date)} · instalment #${next.no}` : undefined} tone={next && s.isOverdue(next) ? "bad" : undefined} />
           <Stat label="Tenancy ends" value={fmtDate(c.end_date)} sub={`${daysUntil(c.end_date)} days left`} />
-          <div className="flex items-center rounded-xl border border-border bg-card p-4">{next && <a className="w-full" href={`/pay/${next.id}`}><Button className="w-full">Pay now (AED)</Button></a>}</div>
+          <div className="rounded-[1.75rem] border border-border/70 bg-card p-5 text-sm"><div className="text-[13px] text-muted-foreground">How to pay</div><p className="mt-2">{s.settings.payment_instructions}</p></div>
         </div>)}
       {acc.property && (
         <Card title="My property">
@@ -112,8 +111,8 @@ export function TenantHome({ tenantId }: { tenantId: number }) {
         </Card>)}
       {acc.upcoming_rent && (
         <Card title="Upcoming rent">
-          <Table head={["#", "Due date", "Amount", "Status", ""]} empty={!inst.length}>
-            {inst.map((i) => <tr key={i.id}><Td>{i.no}</Td><Td>{fmtDate(i.due_date)}</Td><Td className="tabular-nums">{aed(s.balance(i))}</Td><Td>{s.isOverdue(i) ? <Pill tone="red">Overdue</Pill> : <Pill>Upcoming</Pill>}</Td><Td><a href={`/pay/${i.id}`}><Button size="sm" variant="outline">Pay</Button></a></Td></tr>)}
+          <Table head={["#", "Due date", "Amount", "Status"]} empty={!inst.length}>
+            {inst.map((i) => <tr key={i.id}><Td>{i.no}</Td><Td>{fmtDate(i.due_date)}</Td><Td className="tabular-nums">{aed(s.balance(i))}</Td><Td>{s.isOverdue(i) ? <Pill tone="red">Overdue</Pill> : <Pill>Upcoming</Pill>}</Td></tr>)}
           </Table>
         </Card>)}
       {acc.utilities && <TenantUtilities contractId={c.id} bills={bills} />}

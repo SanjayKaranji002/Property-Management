@@ -23,7 +23,7 @@ const TEMPLATES: Record<MessageType, Record<RecipientType, string>> = {
     finance: "Hi {name},\n\nFor your attention: [write the notice here].\n\nThanks",
   },
   "Payment follow-up": {
-    tenant: "Dear {name},\n\nThis is a reminder that rent instalment #{no} of {amount} for {property} is due on {due}{late}.\n\nYou can pay securely here: {link}\n\nIf you have already paid, please ignore this message." + SIGN,
+    tenant: "Dear {name},\n\nThis is a reminder that rent instalment #{no} of {amount} for {property} is due on {due}{late}.\n\n{pay}\n\nIf you have already paid, please ignore this message." + SIGN,
     landlord: "Dear {name},\n\nPayment status for your properties: {overdue} is currently overdue. We are following up with the tenants and will update you once payments are received." + SIGN,
     broker: "Hi {name},\n\nSome tenants on your assigned units have overdue rent. Please help us follow up with them.\n\nThanks",
     manager: "Hi {name},\n\n{overdue} in rent is currently overdue across the portfolio. Please follow up with the tenants and record receipts once received.\n\nThanks",
@@ -93,7 +93,7 @@ export function ComposeDialog({ open, onClose, tenantIds, fromLandlord }: { open
     const v: Record<string, string> = {
       name: who?.name ?? "[name]", property: c ? s.propLabel(c.property_id) : "your property", end: c ? fmtDate(c.end_date) : "[date]",
       no: inst ? String(inst.no) : "[no]", amount: inst ? `AED ${s.balance(inst).toLocaleString()}` : "AED [amount]", due: inst ? fmtDate(inst.due_date) : "[date]",
-      late: d < 0 ? ` (${-d} days overdue)` : "", link: inst ? `${location.origin}/pay/${inst.id}` : "[payment link]",
+      late: d < 0 ? ` (${-d} days overdue)` : "", pay: s.settings.payment_instructions,
       document: doc, count: `${myProps.length} properties`, overdue: `AED ${overdue.toLocaleString()}`,
       sender: fromLandlord ? s.landlord(fromLandlord)?.name ?? "Your landlord" : "Property Management",
     };

@@ -11,7 +11,7 @@ import { Dashboard } from "./pages/dashboard";
 import { PropertiesPage, PropertyDetail } from "./pages/properties";
 import { LandlordDetail, LandlordsPage, TenantDetail, TenantsPage } from "./pages/people";
 import { ContractsPage } from "./pages/contracts";
-import { PayPage, PaymentsPage, UtilitiesPage } from "./pages/finance";
+import { PaymentsPage, UtilitiesPage } from "./pages/finance";
 import { CommunicationsPage, DocumentsPage, SettingsPage, UsersPage } from "./pages/admin";
 import { EjariDewaPage } from "./pages/tracking";
 import { LandlordContracts, LandlordDocuments, LandlordPayments, TenantHome } from "./pages/portals";
@@ -85,8 +85,6 @@ function Shell() {
   const userRef = useRef<HTMLDivElement>(null);
   useEffect(() => { setMenuOpen(false); setUserOpen(false); setBellOpen(false); }, [path]);
 
-  const pay = path.match(/^\/pay\/(\d+)$/);
-  if (pay) return <div className="flex min-h-screen flex-col bg-background text-foreground"><PayPage id={Number(pay[1])} /></div>;
 
   const role = s.me.role;
   const nav = role === "landlord" ? LANDLORD_NAV : role === "tenant" ? [{ href: "/", label: "My tenancy", icon: Home }]

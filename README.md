@@ -84,7 +84,7 @@ The **sun / moon** buttons (top left) switch between light and dark mode.
 | **Tenants & KYC** | Tenant profiles, Emirates ID / passport / driving licence, KYC checklist and approval. |
 | **Agreements** | Rental agreements with approval, automatic payment schedules (yearly, half-yearly, quarterly, monthly; prorating; custom amounts), renewals and move-out closure. |
 | **Ejari & DEWA** | Ejari registration status (worked out automatically) and DEWA move-in activation. |
-| **Collections** | Instalments, cheque receipts (cleared / bounced / replaced), payment links. |
+| **Collections** | Instalments and cheque receipts (cleared / bounced / replaced). The app records payments; it does not take payments online. |
 | **Utilities** | Electricity and water bills: bulk PDF bill import, automatic "paid" from the next bill, tenant receipt upload and approval. |
 | **Documents** | All uploaded files, with a built-in viewer. |
 | **WhatsApp** | Due reminders, message templates per recipient type (tenant, landlord, broker, property manager, finance), communication history. |

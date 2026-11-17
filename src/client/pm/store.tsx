@@ -126,7 +126,7 @@ function useStoreValue() {
     } else notify(`Receipt ${status}`, r.reference);
   };
   const recordPayment = (installmentId: number, amount: number, method: string) =>
-    addReceipt({ installment_id: installmentId, amount, method: method as Receipt["method"], date: today(), reference: method === "Payment link" ? `PL-${Date.now().toString().slice(-6)}` : "—", bank: "" });
+    addReceipt({ installment_id: installmentId, amount, method: method as Receipt["method"], date: today(), reference: "—", bank: "" });
 
   const closeContract = (id: number, closure: Closure) => {
     const c = contracts.find((x) => x.id === id); if (!c) return;
@@ -167,7 +167,7 @@ function useStoreValue() {
   const dueReminders = useMemo(() => dueRemindersFor({
     installments, contracts, settings, balance: lookups.balance, propLabel: lookups.propLabel, tenantName: lookups.tenantName,
     awaitingClearance: (id) => receipts.some((r) => r.installment_id === id && r.status === "received"),
-    payLink: (id) => `${location.origin}/pay/${id}`,
+    payInstructions: settings.payment_instructions,
   }).filter((r) => !sentKeys[r.key]), [installments, contracts, settings, lookups, receipts, sentKeys]);
 
   /** Everyone a message can be addressed to, by type. */

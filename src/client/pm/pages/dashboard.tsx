@@ -55,7 +55,7 @@ export function Dashboard({ landlordId, go }: { landlordId?: number; go: (to: st
   const nav = useGo();
   const tile = (to: string | null, extra = "") => { const c = clickable(nav, to); return { ...c, className: `${extra} rounded-2xl ${c.className ?? ""}` }; };
   const propsLink = (st: string) => (landlordId ? null : h.page(`/properties?status=${st}`, "properties"));
-  const payLinkTab = (t: string) => (landlordId ? h.payments() : h.page(`/payments?tab=${t}`, "payments"));
+  const collectionsLink = (t: string) => (landlordId ? h.payments() : h.page(`/payments?tab=${t}`, "payments"));
   const [filter, setFilter] = useState<string>("all");
   const [focus, setFocus] = useState<"expiring" | "overdue" | "kyc">("expiring");
   const [shift, setShift] = useState(0);
@@ -126,8 +126,8 @@ export function Dashboard({ landlordId, go }: { landlordId?: number; go: (to: st
         {/* Collection status */}
         <Card title="Collection Status">
           <div className="flex items-start justify-between">
-            <div {...tile(payLinkTab("all"), "-m-1 px-2 py-1")}><div className="text-5xl font-light tracking-tight tabular-nums">{collectRate}%</div></div>
-            <span {...(() => { const c = clickable(nav, overdue.length ? payLinkTab("overdue") : null); return { ...c, className: undefined }; })()} className={cn("rounded-full px-3 py-1 text-xs font-medium", overdue.length ? "cursor-pointer hover:brightness-95" : "",  overdue.length ? "bg-[#f6e1d8] text-[#9a3f22]" : "bg-[#1f3d2b] text-[#f4f1ea]")}>{overdue.length ? `${overdue.length} overdue` : "On track"}</span>
+            <div {...tile(collectionsLink("all"), "-m-1 px-2 py-1")}><div className="text-5xl font-light tracking-tight tabular-nums">{collectRate}%</div></div>
+            <span {...(() => { const c = clickable(nav, overdue.length ? collectionsLink("overdue") : null); return { ...c, className: undefined }; })()} className={cn("rounded-full px-3 py-1 text-xs font-medium", overdue.length ? "cursor-pointer hover:brightness-95" : "",  overdue.length ? "bg-[#f6e1d8] text-[#9a3f22]" : "bg-[#1f3d2b] text-[#f4f1ea]")}>{overdue.length ? `${overdue.length} overdue` : "On track"}</span>
           </div>
           <div className="mt-1 text-[13px] text-muted-foreground">Rent collected to date</div>
           <p className="mt-5 text-[11px] uppercase leading-relaxed tracking-wide text-muted-foreground">{aed(overdueTotal)} overdue · {aed(upcoming.reduce((t, i) => t + s.balance(i), 0))} due in the next 30 days</p>
@@ -169,16 +169,16 @@ export function Dashboard({ landlordId, go }: { landlordId?: number; go: (to: st
 
         {/* Rent by month */}
         <Card title="Rent schedule by month" actions={<div className="flex gap-1"><IconBtn onClick={() => setShift((x) => x - 1)}><Minus className="h-3.5 w-3.5" /></IconBtn><IconBtn onClick={() => setShift((x) => x + 1)}><Plus className="h-3.5 w-3.5" /></IconBtn></div>}>
-          <div {...tile(payLinkTab("all"), "-m-2 p-2")}><PillBars data={bars} format={(n) => `AED ${k(n)}`} /></div>
+          <div {...tile(collectionsLink("all"), "-m-2 p-2")}><PillBars data={bars} format={(n) => `AED ${k(n)}`} /></div>
         </Card>
 
         <div className="grid grid-cols-2 gap-5">
-          <div {...tile(payLinkTab("paid"), "pm-card !rounded-[1.75rem] border border-border/70 bg-card p-5")}>
+          <div {...tile(collectionsLink("paid"), "pm-card !rounded-[1.75rem] border border-border/70 bg-card p-5")}>
             <div className="text-[13px] text-muted-foreground">Collected (12 mo)</div>
             <div className="mt-2 text-2xl font-light tabular-nums">AED {k(yearCollected)}</div>
             <div className="mt-3"><Spark values={sparkMonths.map((m) => inst.filter((i) => (i.paid_on ?? "").startsWith(m)).reduce((t, i) => t + i.paid, 0))} /></div>
           </div>
-          <div {...tile(payLinkTab("overdue"), "pm-card !rounded-[1.75rem] border border-border/70 bg-card p-5")}>
+          <div {...tile(collectionsLink("overdue"), "pm-card !rounded-[1.75rem] border border-border/70 bg-card p-5")}>
             <div className="text-[13px] text-muted-foreground">Overdue</div>
             <div className="mt-2 flex items-baseline justify-between"><span className="text-2xl font-light tabular-nums">AED {k(overdueTotal)}</span><span className="text-sm tabular-nums">{overdue.length}</span></div>
             <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full" style={{ width: `${100 - collectRate}%`, background: GREEN }} /></div>
