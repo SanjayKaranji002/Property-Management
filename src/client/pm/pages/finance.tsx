@@ -87,7 +87,7 @@ function ReceiptsTable() {
   const h = useHref();
   const [replacing, setReplacing] = useState<Receipt | null>(null);
   const [ref, setRef] = useState("");
-  const rows = [...s.receipts].sort((a, b) => b.date.localeCompare(a.date));
+  const rows = s.receipts.filter((r) => { const i = s.installments.find((x) => x.id === r.installment_id); return !!i && s.seesContract(i.contract_id); }).sort((a, b) => b.date.localeCompare(a.date));
   const fin = s.canApprove(9) || s.can("payments", "edit");
   return (
     <>
@@ -130,19 +130,20 @@ export function UtilitiesPage() {
   const [importing, setImporting] = useState(false);
   const [recording, setRecording] = useState(false);
   const edit = s.can("utilities", "edit");
-  const rows = s.utilities.filter((u) => (type === "all" || u.type === type) && (status === "all" || (status === "receipts" ? u.status === "unpaid" && u.receipt_status === "submitted" : u.status === status))).sort((a, b) => b.period.localeCompare(a.period));
+  const mine = s.utilities.filter((u) => s.seesContract(u.contract_id));
+  const rows = mine.filter((u) => (type === "all" || u.type === type) && (status === "all" || (status === "receipts" ? u.status === "unpaid" && u.receipt_status === "submitted" : u.status === status))).sort((a, b) => b.period.localeCompare(a.period));
   const billsFor = (u: UtilityBill) => s.docs.filter((d) => d.entity === "utility" && d.entity_id === u.id);
   const month = (p: string) => new Date(`${p}-01T00:00:00`).toLocaleDateString("en-GB", { month: "short", year: "numeric" });
-  const unpaid = s.utilities.filter((u) => u.status === "unpaid");
-  const toCheck = s.utilities.filter((u) => u.status === "unpaid" && u.receipt_status === "submitted");
+  const unpaid = mine.filter((u) => u.status === "unpaid");
+  const toCheck = mine.filter((u) => u.status === "unpaid" && u.receipt_status === "submitted");
   return (
     <Page title="Utility billing" meta="Electricity & water charges per tenancy"
       actions={edit && <><Button variant="outline" onClick={() => setImporting(true)}><FileUp className="h-4 w-4" />Import bills</Button><Button variant="outline" onClick={() => setRecording(true)}><ReceiptIcon className="h-4 w-4" />Record payment</Button><Button variant="outline" onClick={() => setEditing({})}><Plus className="h-4 w-4" />Add charge</Button></>}>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Receipts to check" value={toCheck.length} sub="uploaded by tenants" tone={toCheck.length ? "warn" : undefined} onClick={() => setStatus(status === "receipts" ? "all" : "receipts")} active={status === "receipts"} />
         <Stat label="Unpaid bills" value={aed(unpaid.reduce((t, u) => t + u.amount, 0))} sub={`${unpaid.length} bills`} tone="bad" onClick={() => setStatus(status === "unpaid" ? "all" : "unpaid")} active={status === "unpaid"} />
-        <Stat label="Paid bills" value={s.utilities.filter((u) => u.status === "paid").length} tone="good" onClick={() => setStatus(status === "paid" ? "all" : "paid")} active={status === "paid"} />
-        <Stat label="All bills" value={s.utilities.length} onClick={() => { setStatus("all"); setType("all"); }} active={status === "all" && type === "all"} />
+        <Stat label="Paid bills" value={mine.filter((u) => u.status === "paid").length} tone="good" onClick={() => setStatus(status === "paid" ? "all" : "paid")} active={status === "paid"} />
+        <Stat label="All bills" value={mine.length} onClick={() => { setStatus("all"); setType("all"); }} active={status === "all" && type === "all"} />
       </div>
       <div className="flex flex-wrap gap-2">
         <NSelect className="w-44" value={type} onChange={setType} options={[{ value: "all", label: "All utilities" }, { value: "electricity", label: "Electricity" }, { value: "water", label: "Water" }, { value: "combined", label: "Electricity & water" }]} />

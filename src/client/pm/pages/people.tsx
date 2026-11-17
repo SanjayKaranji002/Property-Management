@@ -15,7 +15,7 @@ export function LandlordsPage({ go }: { go: (to: string) => void }) {
   const h = useHref();
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<Partial<Landlord> | null>(null);
-  const rows = s.landlords.filter((l) => `${l.name} ${l.email} ${l.phone}`.toLowerCase().includes(q.toLowerCase()));
+  const rows = s.landlords.filter((l) => s.seesLandlord(l.id) && `${l.name} ${l.email} ${l.phone}`.toLowerCase().includes(q.toLowerCase()));
   return (
     <Page title="Landlords" meta={`${s.landlords.length} landlords`} actions={s.can("landlords", "edit") && <Button onClick={() => setEditing({})}><Plus className="h-4 w-4" />Add landlord</Button>}>
       <SearchBox value={q} onChange={setQ} />
@@ -104,7 +104,7 @@ export function TenantsPage({ go }: { go: (to: string) => void }) {
   // Same rule as the dashboard's KYC alerts: not approved, ID expiring within 60 days, or required items missing.
   const isAlert = (t: Tenant) => activeTenants.has(t.id) && (t.kyc_status !== "approved" || daysUntil(t.emirates_id_expiry) <= 60 ||
     kycChecklist(t, (cat) => s.docs.some((d) => d.entity === "tenant" && d.entity_id === t.id && d.category === cat)).some((x) => x.required && !x.done));
-  const rows = s.tenants.filter((t) => (kyc === "all" || (kyc === "alerts" ? isAlert(t) : t.kyc_status === kyc)) &&
+  const rows = s.tenants.filter((t) => s.seesTenant(t.id) && (kyc === "all" || (kyc === "alerts" ? isAlert(t) : t.kyc_status === kyc)) &&
     `${t.first_name} ${t.last_name} ${t.email} ${t.phone} ${t.emirates_id}`.toLowerCase().includes(q.toLowerCase()));
   return (
     <Page title="Tenants" meta={`${s.tenants.length} tenants`} actions={s.can("tenants", "edit") && <Button onClick={() => setEditing({})}><Plus className="h-4 w-4" />Add tenant</Button>}>

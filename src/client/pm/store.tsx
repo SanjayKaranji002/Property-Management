@@ -4,16 +4,18 @@ import {
   buildInstallments, buildReceipts, calcInstallments, daysUntil, defaultSettings, today,
   seedContracts, seedDocs, seedLandlords, seedMessages, seedProperties, seedTenants, seedUsers, seedUtilities,
   type Channel, type Contract, type Recipient, type RecipientType, type ReminderType, type SendVia, type Doc, type Installment, type Landlord, type Message, type Module,
-  type Property, type Role, type Receipt, type ReceiptStatus, type Closure, type Settings, type Tenant, type User, type UtilityBill, agreementRef } from "./data";
+  type Property, type Role, type Receipt, type ReceiptStatus, type Closure, type Settings, type Tenant, type User, type UtilityBill, agreementRef, canSeeProperty, isRestricted } from "./data";
 
 export interface Toast { id: number; title: string; body: string }
 
 /** Who a notification is for. Anyone matching any field sees it. */
-export interface Audience { users?: number[]; roles?: Role[]; tenants?: number[]; landlords?: number[] }
+export interface Audience { users?: number[]; roles?: Role[]; tenants?: number[]; landlords?: number[];
+  /** Limits role-based delivery to staff who can see this property. */
+  property?: number }
 interface InboxItem extends Toast { at: string; readBy: number[]; to: Audience }
 
 const isFor = (to: Audience, u: User) =>
-  !!(to.users?.includes(u.id) || to.roles?.includes(u.role)
+  !!(to.users?.includes(u.id) || (to.roles?.includes(u.role) && (to.property == null || canSeeProperty(u, to.property)))
     || (u.tenant_id && to.tenants?.includes(u.tenant_id)) || (u.landlord_id && to.landlords?.includes(u.landlord_id)));
 
 function useStoreValue() {
@@ -234,11 +236,29 @@ function useStoreValue() {
   };
   /** Who approves a workflow step is set in the approval matrix (admin can always approve). */
   const canApprove = (step: number) => me.role === "admin" || (me.overrides?.[`approve.${step}`] ?? settings.approval_matrix[step - 1].includes(me.role));
-  /** Brokers only see the properties assigned to them. */
-  const visibleProperties = me.role === "broker" ? properties.filter((p) => me.property_ids?.includes(p.id)) : properties;
+  /** Brokers, and Property Managers set to "selected", only see the properties assigned to them. */
+  const visibleProperties = properties.filter((p) => canSeeProperty(me, p.id));
+  const visibleIds = new Set(visibleProperties.map((p) => p.id));
+  const restricted = isRestricted(me);
+  /** Visible to the signed-in user: a tenancy, a tenant (through their tenancies), a landlord (through their properties). */
+  const seesContract = (contractId: number) => { const c = contracts.find((x) => x.id === contractId); return !!c && visibleIds.has(c.property_id); };
+  const seesTenant = (tenantId: number | null | undefined) => !restricted || contracts.some((c) => c.tenant_id === tenantId && visibleIds.has(c.property_id));
+  const seesLandlord = (landlordId: number | null | undefined) => !restricted || visibleProperties.some((p) => p.landlord_id === landlordId);
+  /** Property Managers limited to a property (the ones listed on it). */
+  const managersOf = (propertyId: number) => users.filter((u) => u.role === "manager" && u.property_access === "selected" && u.property_ids?.includes(propertyId));
+  /** Assign a property to one manager (or none): only "selected" managers' lists change. */
+  const assignManager = (propertyId: number, managerId: number | null) => {
+    setUsers((us) => us.map((u) => {
+      if (u.role !== "manager") return u;
+      const has = !!u.property_ids?.includes(propertyId);
+      if (u.id === managerId && u.property_access === "selected" && !has) return { ...u, property_ids: [...(u.property_ids ?? []), propertyId] };
+      if (u.id !== managerId && u.property_access === "selected" && has) return { ...u, property_ids: (u.property_ids ?? []).filter((x) => x !== propertyId) };
+      return u;
+    }));
+  };
 
   return {
-    landlords, properties, tenants, contracts, installments, receipts, utilities, visibleProperties, canApprove, overlapFor,
+    landlords, properties, tenants, contracts, installments, receipts, utilities, visibleProperties, restricted, seesContract, seesTenant, seesLandlord, managersOf, assignManager, canApprove, overlapFor,
     addReceipt, setReceiptStatus, closeContract, patchContract, docs, messages, users, settings,
     me, setCurrentUserId, toasts, notify, alert, can,
     /** The signed-in person's notifications only. */

@@ -93,7 +93,7 @@ export function ReportPaymentDialog({ contractId: fixedContract, onClose, asTena
     }
     if (asTenant) {
       s.notify("Receipt sent", "Thank you. We'll check it and mark the bill paid.");
-      s.alert("Utility receipt to check", `${s.tenantName(s.me.tenant_id)} reported paying ${UTIL_LABEL[f.type].toLowerCase()} ${f.period}.`, { roles: ["admin", "manager", "finance"] });
+      s.alert("Utility receipt to check", `${s.tenantName(s.me.tenant_id)} reported paying ${UTIL_LABEL[f.type].toLowerCase()} ${f.period}.`, { roles: ["admin", "manager", "finance"], property: s.contract(contractId)?.property_id });
     }
     else s.notify("Payment recorded", `${provider} ${UTIL_LABEL[f.type].toLowerCase()} ${f.period} · ${aed(existing ? recordedTotal : f.amount)}`);
     onClose();

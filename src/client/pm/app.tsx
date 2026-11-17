@@ -108,9 +108,9 @@ function Shell() {
     const guard = (m: Module, el: ReactElement) => (s.can(m) ? el : <NoAccess />);
     let n: number | null;
     if ((n = id(/^\/properties\/(\d+)$/))) return guard("properties", s.visibleProperties.some((p) => p.id === n) ? <PropertyDetail id={n} go={go} /> : <NoAccess />);
-    if ((n = id(/^\/landlords\/(\d+)$/))) return guard("landlords", <LandlordDetail id={n} go={go} />);
-    if ((n = id(/^\/tenants\/(\d+)$/))) return guard("tenants", <TenantDetail id={n} go={go} />);
-    if ((n = id(/^\/contracts\/(\d+)$/))) return guard("contracts", <ContractsPage key={path} openId={n} />);
+    if ((n = id(/^\/landlords\/(\d+)$/))) return guard("landlords", s.seesLandlord(n) ? <LandlordDetail id={n} go={go} /> : <NoAccess />);
+    if ((n = id(/^\/tenants\/(\d+)$/))) return guard("tenants", s.seesTenant(n) ? <TenantDetail id={n} go={go} /> : <NoAccess />);
+    if ((n = id(/^\/contracts\/(\d+)$/))) return guard("contracts", s.seesContract(n) ? <ContractsPage key={path} openId={n} /> : <NoAccess />);
     switch (path) {
       case "/properties": return guard("properties", <PropertiesPage go={go} />);
       case "/landlords": return guard("landlords", <LandlordsPage go={go} />);

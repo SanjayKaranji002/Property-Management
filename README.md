@@ -67,7 +67,8 @@ pick a demo user to see the app as that role:
 | Demo user | Role | What they see |
 |---|---|---|
 | Admin | Administrator | Everything |
-| Fatima | Property Manager | Day-to-day operations (permissions set by the admin) |
+| Fatima | Property Manager | Day-to-day operations on all properties (permissions set by the admin) |
+| Khalid Saeed | Property Manager | Only the properties assigned to him |
 | Yousef Karim, Nadia Brokers LLC | Broker | Only their assigned properties |
 | Leena Das | Finance | Collections, utilities, settlements |
 | Ahmed Al Mansoori, Priya Raman | Landlord | Landlord portal — their own properties only |

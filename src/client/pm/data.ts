@@ -93,7 +93,9 @@ export interface Message {
 export type RecipientType = "tenant" | "landlord" | "broker" | "manager" | "finance";
 export const RECIPIENT_LABEL: Record<RecipientType, string> = { tenant: "Tenant", landlord: "Landlord", broker: "Broker", manager: "Property Manager", finance: "Finance" };
 export interface Recipient { id: number; name: string; phone: string; email: string; detail: string }
-export interface User { id: number; name: string; email: string; role: Role; landlord_id?: number; tenant_id?: number; phone?: string; property_ids?: number[]; approval_limit?: number; active: boolean;
+export interface User { id: number; name: string; email: string; role: Role;
+  /** Property Managers: every property, or only `property_ids`. Brokers always use `property_ids`. */
+  property_access?: "all" | "selected"; landlord_id?: number; tenant_id?: number; phone?: string; property_ids?: number[]; approval_limit?: number; active: boolean;
   /** Per-person exceptions to the role, keyed "<module>.view" | "<module>.edit" | "approve.<step>". */
   overrides?: Record<string, boolean> }
 
@@ -323,7 +325,7 @@ export const seedMessages: Message[] = [
 export const seedUsers: User[] = [
   { id: 1, name: "Admin", email: "admin@company.ae", role: "admin", active: true },
   { id: 2, name: "Fatima (Property Manager)", email: "fatima@company.ae", phone: "+971501112200", role: "manager", active: true },
-  { id: 9, name: "Khalid Saeed", email: "khalid.s@company.ae", phone: "+971502223300", role: "manager", active: true },
+  { id: 9, name: "Khalid Saeed", email: "khalid.s@company.ae", phone: "+971502223300", role: "manager", property_access: "selected", property_ids: [5, 6, 7, 8, 9, 10], active: true },
   { id: 3, name: "Ahmed Al Mansoori", email: "ahmed.m@example.ae", role: "landlord", landlord_id: 2, active: true },
   { id: 4, name: "Priya Raman", email: "priya.r@example.com", role: "landlord", landlord_id: 3, active: true },
   { id: 5, name: "Omar Haddad", email: "omar.h@example.com", role: "tenant", tenant_id: 1, active: true },
@@ -405,3 +407,9 @@ export const EJARI_HELP: Record<EjariStatus, string> = {
   renewed: "This agreement was renewed. The new agreement carries its own Ejari registration.",
   cancelled: "The tenancy was closed and its Ejari cancelled.",
 };
+
+/** Whether a user is limited to particular properties (brokers always; managers when set to "selected"). */
+export const isRestricted = (u: Pick<User, "role" | "property_access">) => u.role === "broker" || (u.role === "manager" && u.property_access === "selected");
+/** Whether a staff user may see a property. Other roles are scoped elsewhere (landlord / tenant portals). */
+export const canSeeProperty = (u: Pick<User, "role" | "property_access" | "property_ids">, propertyId: number) =>
+  !isRestricted(u) || !!u.property_ids?.includes(propertyId);

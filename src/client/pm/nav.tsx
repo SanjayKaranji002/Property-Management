@@ -24,11 +24,11 @@ export function useHref() {
       if (role === "tenant") return s.contracts.some((c) => c.property_id === id && c.tenant_id === s.me.tenant_id) ? "/" : null;
       return null;
     },
-    tenant: (id: number | null | undefined): string | null => (id && staff && s.can("tenants") ? `/tenants/${id}` : null),
-    landlord: (id: number | null | undefined): string | null => (id && staff && s.can("landlords") ? `/landlords/${id}` : null),
+    tenant: (id: number | null | undefined): string | null => (id && staff && s.can("tenants") && s.seesTenant(id) ? `/tenants/${id}` : null),
+    landlord: (id: number | null | undefined): string | null => (id && staff && s.can("landlords") && s.seesLandlord(id) ? `/landlords/${id}` : null),
     contract: (id: number | null | undefined): string | null => {
       if (!id) return null;
-      if (staff) return s.can("contracts") ? `/contracts/${id}` : null;
+      if (staff) return s.can("contracts") && s.seesContract(id) ? `/contracts/${id}` : null;
       if (role === "landlord") return ownProperty(s.contract(id)?.property_id ?? 0) && s.settings.landlord_access.contracts ? `/portal/contracts/${id}` : null;
       if (role === "tenant") return myTenancy(id) ? "/" : null;
       return null;

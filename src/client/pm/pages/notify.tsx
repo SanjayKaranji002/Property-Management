@@ -3,7 +3,7 @@ import { BellRing, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { aed, daysUntil, fmtDate, RECIPIENT_LABEL, VIA_LABEL, type Channel, type Recipient, type RecipientType, type SendVia, agreementRef, UTIL_LABEL } from "../data";
+import { aed, daysUntil, fmtDate, RECIPIENT_LABEL, VIA_LABEL, type Channel, type Recipient, type RecipientType, type SendVia, agreementRef, UTIL_LABEL, canSeeProperty } from "../data";
 import { useStore, type Store } from "../store";
 import { Field, Modal, NSelect, Pill, ViaPicker } from "../ui";
 
@@ -67,7 +67,7 @@ function partiesFor(s: Store, ev: NotifyEvent) {
     tenant: s.recipients("tenant").filter((r) => r.id === tenantId),
     landlord: s.recipients("landlord").filter((r) => r.id === property?.landlord_id),
     broker: s.recipients("broker").filter((r) => brokerIds.has(r.id)),
-    manager: s.recipients("manager"),
+    manager: s.recipients("manager").filter((r) => { const u = s.users.find((x) => x.id === r.id); return !!u && (!property || canSeeProperty(u, property.id)); }),
     finance: ev.kind === "payment" || ev.kind === "utility" ? s.recipients("finance") : [],
   };
   return { contract, property, tenantId, parties: out };

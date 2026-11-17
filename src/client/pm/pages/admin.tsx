@@ -23,7 +23,8 @@ export function DocumentsPage({ go }: { go: (to: string) => void }) {
   const [viewing, setViewing] = useState<Doc | null>(null);
   const owner = (d: Doc) => d.entity === "utility" ? (() => { const u = s.utilities.find((x) => x.id === d.entity_id); const c = u && s.contract(u.contract_id); return u && c ? `${UTIL_LABEL[u.type]} ${u.period} · ${s.propLabel(c.property_id)}` : "Utility bill"; })() : d.entity === "tenant" ? s.tenantName(d.entity_id) : d.entity === "landlord" ? s.landlord(d.entity_id)?.name : d.entity === "property" ? s.propLabel(d.entity_id) : (() => { const c = s.contract(d.entity_id); return c ? `Agreement ${agreementRef(c)}` : "Agreement"; })();
   const link = (d: Doc) => d.entity === "utility" ? "/utilities" : d.entity === "tenant" ? `/tenants/${d.entity_id}` : d.entity === "landlord" ? `/landlords/${d.entity_id}` : d.entity === "property" ? `/properties/${d.entity_id}` : "/contracts";
-  const rows = s.docs.filter((d) => (cat === "all" || d.category === cat) && `${d.name} ${owner(d)}`.toLowerCase().includes(q.toLowerCase()));
+  const seesDoc = (d: Doc) => !s.restricted || (d.entity === "tenant" ? s.seesTenant(d.entity_id) : d.entity === "landlord" ? s.seesLandlord(d.entity_id) : d.entity === "property" ? s.visibleProperties.some((p) => p.id === d.entity_id) : d.entity === "contract" ? s.seesContract(d.entity_id) : (() => { const u = s.utilities.find((x) => x.id === d.entity_id); return !!u && s.seesContract(u.contract_id); })());
+  const rows = s.docs.filter((d) => seesDoc(d) && (cat === "all" || d.category === cat) && `${d.name} ${owner(d)}`.toLowerCase().includes(q.toLowerCase()));
   return (
     <Page title="Documents" meta={`${s.docs.length} files · agreements, Emirates IDs, KYC, title deeds, photos`}>
       <div className="flex flex-wrap gap-2">
@@ -55,7 +56,7 @@ export function CommunicationsPage() {
   const [sending, setSending] = useState(false);
   const [composing, setComposing] = useState(false);
   const [ch, setCh] = useState("all");
-  const rows = s.messages.filter((m) => ch === "all" || (ch === "auto" ? m.auto : m.channel === ch));
+  const rows = s.messages.filter((m) => (!s.restricted || (m.tenant_id ? s.seesTenant(m.tenant_id) : m.landlord_id ? s.seesLandlord(m.landlord_id) : true)) && (ch === "all" || (ch === "auto" ? m.auto : m.channel === ch)));
   return (
     <Page title="WhatsApp & notifications" meta="Automated reminders and communication history"
       actions={s.can("communications", "edit") && <><Button variant="outline" onClick={() => setComposing(true)}><Plus className="h-4 w-4" />New message</Button><Button disabled={!s.dueReminders.length} onClick={() => setSending(true)}><Zap className="h-4 w-4" />Send due reminders ({s.dueReminders.length})</Button></>}>
@@ -188,11 +189,34 @@ export function UsersPage() {
           {s.users.map((u) => (
             <tr key={u.id} className="cursor-pointer hover:bg-muted/40" onClick={() => setEditing(u)}>
               <Td className="font-medium">{u.name}</Td><Td>{u.email}</Td><Td><Pill tone={u.role === "admin" ? "green" : u.role === "landlord" ? "violet" : u.role === "tenant" ? "gray" : "blue"}>{ROLE_LABEL[u.role]}</Pill></Td>
-              <Td>{u.landlord_id ? s.landlord(u.landlord_id)?.name : u.tenant_id ? s.tenantName(u.tenant_id) : u.property_ids ? `${u.property_ids.length} assigned properties` : u.approval_limit ? `Approves up to AED ${u.approval_limit.toLocaleString()}` : "All records"}</Td><Td>{u.active ? <Pill tone="green">Active</Pill> : <Pill>Disabled</Pill>}</Td>
+              <Td>{u.landlord_id ? s.landlord(u.landlord_id)?.name : u.tenant_id ? s.tenantName(u.tenant_id) : u.role === "manager" ? (u.property_access === "selected" ? `${u.property_ids?.length ?? 0} assigned properties` : "All properties") : u.property_ids ? `${u.property_ids.length} assigned properties` : u.approval_limit ? `Approves up to AED ${u.approval_limit.toLocaleString()}` : "All records"}</Td><Td>{u.active ? <Pill tone="green">Active</Pill> : <Pill>Disabled</Pill>}</Td>
             </tr>))}
         </Table>)}
       <UserDialog value={editing} onClose={() => setEditing(null)} />
     </Page>
+  );
+}
+
+/** Pick properties one by one, or a landlord's whole portfolio at once. */
+function PropertyChecklist({ ids, onChange }: { ids: number[]; onChange: (ids: number[]) => void }) {
+  const s = useStore();
+  const [q, setQ] = useState("");
+  const toggle = (id: number, on: boolean) => onChange(on ? [...new Set([...ids, id])] : ids.filter((x) => x !== id));
+  const rows = s.properties.filter((p) => `${s.propLabel(p.id)} ${s.landlord(p.landlord_id)?.name ?? ""} ${p.community}`.toLowerCase().includes(q.toLowerCase()));
+  return (
+    <div className="col-span-2 space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium">Assigned properties ({ids.length})</span>
+        <span className="flex-1" />
+        <NSelect className="h-8 w-56" value="" onChange={(v) => { if (v) onChange([...new Set([...ids, ...s.properties.filter((p) => p.landlord_id === Number(v)).map((p) => p.id)])]); }}
+          options={[{ value: "", label: "Add all from landlord…" }, ...s.landlords.map((l) => ({ value: l.id, label: `${l.name} (${s.properties.filter((p) => p.landlord_id === l.id).length})` }))]} />
+        {ids.length > 0 && <button type="button" className="text-xs text-muted-foreground hover:underline" onClick={() => onChange([])}>Clear</button>}
+      </div>
+      <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search property, landlord or area" className="h-9" />
+      <div className="grid max-h-48 grid-cols-1 gap-1 overflow-auto rounded-2xl border border-input p-2 text-sm sm:grid-cols-2">
+        {rows.map((p) => <label key={p.id} className="flex items-center gap-2"><input type="checkbox" checked={ids.includes(p.id)} onChange={(e) => toggle(p.id, e.target.checked)} /><span className="min-w-0 truncate">{s.propLabel(p.id)} <span className="text-xs text-muted-foreground">· {s.landlord(p.landlord_id)?.name}</span></span></label>)}
+      </div>
+    </div>
   );
 }
 
@@ -210,12 +234,12 @@ function UserDialog({ value, onClose }: { value: Partial<User> | null; onClose: 
         <Field label="Email (login)"><Input type="email" value={f.email ?? ""} onChange={(e) => set("email", e.target.value)} /></Field>
         <Field label="Role"><NSelect value={f.role ?? "manager"} onChange={(v) => set("role", v as Role)} options={(Object.keys(ROLE_LABEL) as Role[]).map((r) => ({ value: r, label: ROLE_LABEL[r] }))} /></Field>
         {f.role === "finance" && <Field label="Approval limit (AED)"><Input type="number" value={f.approval_limit ?? 0} onChange={(e) => set("approval_limit", Number(e.target.value))} /></Field>}
-        {f.role === "broker" && (
-          <Field label="Assigned properties" className="col-span-2">
-            <div className="grid max-h-40 grid-cols-1 gap-1 overflow-auto rounded-2xl border border-input p-2 text-sm sm:grid-cols-2">
-              {s.properties.map((p) => <label key={p.id} className="flex items-center gap-2"><input type="checkbox" checked={!!f.property_ids?.includes(p.id)} onChange={(e) => set("property_ids", e.target.checked ? [...(f.property_ids ?? []), p.id] : (f.property_ids ?? []).filter((x) => x !== p.id))} />{s.propLabel(p.id)}</label>)}
-            </div>
+        {f.role === "manager" && (
+          <Field label="Properties this manager handles" className="col-span-2">
+            <ViaPicker value={f.property_access ?? "all"} onChange={(v) => set("property_access", v)} options={[{ value: "all", label: "All properties" }, { value: "selected", label: "Selected properties" }]} />
           </Field>)}
+        {(f.role === "broker" || (f.role === "manager" && f.property_access === "selected")) && (
+          <PropertyChecklist ids={f.property_ids ?? []} onChange={(ids) => set("property_ids", ids)} />)}
         {f.role === "landlord" && <Field label="Landlord"><NSelect value={f.landlord_id ?? ""} onChange={(v) => set("landlord_id", Number(v))} options={[{ value: "", label: "Select…" }, ...s.landlords.map((l) => ({ value: l.id, label: l.name }))]} /></Field>}
         {f.role === "tenant" && <Field label="Tenant"><NSelect value={f.tenant_id ?? ""} onChange={(v) => set("tenant_id", Number(v))} options={[{ value: "", label: "Select…" }, ...s.tenants.map((t) => ({ value: t.id, label: `${t.first_name} ${t.last_name}` }))]} /></Field>}
         <label className="col-span-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={!!f.active} onChange={(e) => set("active", e.target.checked)} />Active</label>
