@@ -16,6 +16,8 @@ interface Row {
   electricity: number; water: number; total: number; dueDate: string;
   paidAmount: number; paidOn: string;
   skip: boolean;
+  /** The bill was settled before import: save it as Paid straight away. */
+  alreadyPaid: boolean; alreadyPaidOn: string;
 }
 
 const month = (p: string) => (p ? new Date(`${p}-01T00:00:00`).toLocaleDateString("en-GB", { month: "short", year: "numeric" }) : "—");
@@ -71,7 +73,7 @@ export function BillImportDialog({ onClose }: { onClose: () => void }) {
     const files = Array.from(list ?? []).filter((f) => f.size <= 10 * 1024 * 1024);
     const fresh: Row[] = files.map((file) => ({
       key: `${file.name}-${file.size}-${Math.random()}`, file, url: "", status: "reading", parsed: null,
-      contractId: null, provider: "", period: "", electricity: 0, water: 0, total: 0, dueDate: "", paidAmount: 0, paidOn: "", skip: false,
+      contractId: null, provider: "", period: "", electricity: 0, water: 0, total: 0, dueDate: "", paidAmount: 0, paidOn: "", skip: false, alreadyPaid: false, alreadyPaidOn: "",
     }));
     setRows((r) => [...r, ...fresh]);
     for (const row of fresh) {
@@ -99,18 +101,24 @@ export function BillImportDialog({ onClose }: { onClose: () => void }) {
   const reading = rows.some((r) => r.status === "reading");
 
   function confirm() {
-    let charges = 0, settledCount = 0;
+    let charges = 0, settledCount = 0, paidCount = 0;
     for (const r of ready) {
       const dupTypes = new Set(duplicateOf(s, r).map((d) => d.type));
       for (const ch of chargesFor(r)) {
         if (dupTypes.has(ch.type)) continue;
-        const bill = s.saveUtility({ contract_id: r.contractId!, type: ch.type, period: r.period, amount: ch.amount, status: "unpaid", provider: r.provider || "Other", due_date: r.dueDate || undefined });
+        const bill = s.saveUtility({
+          contract_id: r.contractId!, type: ch.type, period: r.period, amount: ch.amount, provider: r.provider || "Other", due_date: r.dueDate || undefined,
+          ...(r.alreadyPaid
+            ? { status: "paid" as const, paid_on: r.alreadyPaidOn || r.dueDate || today(), paid_method: "Already paid (marked at import)", paid_by: s.me.name }
+            : { status: "unpaid" as const }),
+        });
+        if (r.alreadyPaid) paidCount++;
         s.saveDoc({ entity: "utility", entity_id: bill.id, category: "utility_bill", name: r.file.name, mime: r.file.type || "application/pdf", url: r.url, uploaded_on: today() });
         charges++;
       }
       if (r.paidAmount > 0) settledCount += settleFromNextBill(s, r.contractId!, r.period, r.paidAmount, r.paidOn || today(), `${r.provider} bill ${month(r.period)}`).length;
     }
-    s.notify("Bills imported", `${charges} charges added${settledCount ? ` · ${settledCount} earlier bills marked paid` : ""}`);
+    s.notify("Bills imported", `${charges} charges added${paidCount ? ` · ${paidCount} already paid` : ""}${settledCount ? ` · ${settledCount} earlier bills marked paid` : ""}`);
     onClose();
   }
 
@@ -133,6 +141,14 @@ export function BillImportDialog({ onClose }: { onClose: () => void }) {
       </div>
 
       {rows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-muted/60 px-3 py-2 text-sm">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={rows.every((r) => r.alreadyPaid)} onChange={(e) => setRows((rs) => rs.map((r) => ({ ...r, alreadyPaid: e.target.checked })))} />
+            Mark all as already paid
+          </label>
+          <span className="text-xs text-muted-foreground">For old bills you know are settled, e.g. when you first start using the app.</span>
+        </div>)}
+      {rows.length > 0 && (
         <div className="max-h-[50vh] space-y-2 overflow-auto">
           {rows.map((r) => {
             const issues = r.status === "ready" ? problems(r) : [];
@@ -144,6 +160,9 @@ export function BillImportDialog({ onClose }: { onClose: () => void }) {
                   {r.status === "reading" ? <Pill tone="gray"><Loader2 className="mr-1 h-3 w-3 animate-spin" />Reading</Pill>
                     : !r.parsed?.textFound ? <Pill tone="amber">No text — fill in by hand</Pill>
                     : issues.length ? <Pill tone="red">{issues[0]}</Pill> : <Pill tone="green">Ready</Pill>}
+                  {r.alreadyPaid && <Pill tone="green">Will be saved as Paid</Pill>}
+                  <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={r.alreadyPaid} onChange={(e) => update(r.key, { alreadyPaid: e.target.checked })} />Already paid</label>
+                  {r.alreadyPaid && <input type="date" aria-label="Paid on" title="Paid on (optional)" className="h-7 rounded-full border border-border bg-card px-2 text-xs" value={r.alreadyPaidOn} onChange={(e) => update(r.key, { alreadyPaidOn: e.target.value })} />}
                   <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={r.skip} onChange={(e) => update(r.key, { skip: e.target.checked })} />Skip</label>
                   <button aria-label={`Remove ${r.file.name}`} onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))}><X className="h-4 w-4 text-muted-foreground" /></button>
                 </div>
