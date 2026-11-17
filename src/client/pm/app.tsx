@@ -149,7 +149,7 @@ function Shell() {
             {bellOpen && (
               <div className="pm-card absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-1.5rem)] rounded-[1.5rem] border border-border/70 bg-card">
                 <div className="flex items-center px-4 py-3 text-sm font-medium"><span className="flex-1">Notifications</span>
-                  <button className="text-xs font-normal text-muted-foreground hover:underline" onClick={() => s.setInbox((i) => i.map((x) => ({ ...x, read: true })))}>Mark all read</button></div>
+                  <button className="text-xs font-normal text-muted-foreground hover:underline" onClick={s.markAllRead}>Mark all read</button></div>
                 <ul className="max-h-80 divide-y divide-border/70 overflow-auto">
                   {s.inbox.length === 0 && <li className="p-4 text-sm text-muted-foreground">No notifications.</li>}
                   {s.inbox.map((i) => <li key={i.id} className={cn("px-4 py-3 text-sm", !i.read && "bg-muted/50")}><div className="font-medium">{i.title}</div><div className="text-muted-foreground">{i.body}</div></li>)}

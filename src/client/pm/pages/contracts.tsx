@@ -176,6 +176,7 @@ function ContractDialog({ value, onClose }: { value: Partial<Contract> | null; o
       agreement_versions: (f.agreement_versions ?? 1) + (f.id && files.length ? 1 : 0) });
     for (const file of files) s.saveDoc({ entity: "contract", entity_id: saved.id, category: "tenancy_contract", name: file.name, mime: file.mime, url: file.url, uploaded_on: today() });
     if (files.length) s.notify("Agreement document uploaded", files.map((x) => x.name).join(", "));
+    if (calc_check === "pending") s.alert("Calculation to check", `${s.propLabel(f.property_id!)} — ${s.tenantName(f.tenant_id)}: new agreement terms.`, { roles: ["finance"] });
     s.notify(approval === "approved" ? "Agreement approved" : approval === "pending" ? "Sent for approval" : "Draft saved", `${preview.length} instalments scheduled${calc_check === "pending" ? " · sent to Finance for calculation check" : ""}`);
     onClose();
   }
@@ -349,6 +350,7 @@ function CalcCheck({ contract: c }: { contract: Contract }) {
   const decide = (calc_check: "approved" | "returned") => {
     s.patchContract(c.id, { calc_check, calc_note: note.trim() || undefined, calc_by: s.me.name });
     s.notify(calc_check === "approved" ? "Calculation approved" : "Calculation sent back", `${agreementRef(c)}${calc_check === "returned" ? " · returned to the Property Manager" : ""}`);
+    if (calc_check === "returned") s.alert("Calculation sent back", `${agreementRef(c)}: ${note.trim()}`, { roles: ["manager"] });
   };
   return (
     <div className={cn("space-y-3 rounded-[1.25rem] border p-4 text-sm", state === "pending" ? "border-[#e2c58f] bg-[#fbf6ec] dark:bg-[#2a2519]" : state === "returned" ? "border-[#e8c9bb] bg-[#fbf3ef] dark:bg-[#2a1f1b]" : "border-border/70")}>
@@ -415,6 +417,7 @@ export function ClosureDialog({ contract, onClose }: { contract: Contract | null
   function sendToFinance() {
     s.patchContract(contract!.id, { closure: { ...f!, approved_by_finance: false, submitted_by: s.me.name } });
     s.notify("Sent to Finance", `Move-out settlement for ${agreementRef(contract!)} is waiting for Finance approval.`);
+    s.alert("Settlement to approve", `${s.propLabel(contract!.property_id)}: move-out settlement sent by ${s.me.name}.`, { roles: ["finance", "admin"] });
     onClose();
   }
   function approveAndClose() {
@@ -424,6 +427,7 @@ export function ClosureDialog({ contract, onClose }: { contract: Contract | null
   function sendBack() {
     s.patchContract(contract!.id, { closure: null });
     s.notify("Settlement sent back", `${agreementRef(contract!)}: ${note.trim()}`);
+    s.alert("Settlement sent back", `${s.propLabel(contract!.property_id)}: ${note.trim()}`, { roles: ["manager"] });
     onClose();
   }
 

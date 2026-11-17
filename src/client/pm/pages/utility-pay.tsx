@@ -91,7 +91,10 @@ export function ReportPaymentDialog({ contractId: fixedContract, onClose, asTena
       if (asTenant) s.saveUtility({ ...base, receipt_doc_id: doc?.id, receipt_status: "submitted", paid_ref: f.paid_ref || undefined, paid_on: f.paid_on });
       else s.saveUtility({ ...base, status: "paid", paid_on: f.paid_on, paid_method: "Paid to provider", paid_ref: f.paid_ref || (doc ? "Receipt attached" : undefined), paid_by: s.me.name, receipt_doc_id: doc?.id, receipt_status: doc ? "approved" : undefined });
     }
-    if (asTenant) s.notify("Receipt sent", "Thank you. We'll check it and mark the bill paid.");
+    if (asTenant) {
+      s.notify("Receipt sent", "Thank you. We'll check it and mark the bill paid.");
+      s.alert("Utility receipt to check", `${s.tenantName(s.me.tenant_id)} reported paying ${UTIL_LABEL[f.type].toLowerCase()} ${f.period}.`, { roles: ["admin", "manager", "finance"] });
+    }
     else s.notify("Payment recorded", `${provider} ${UTIL_LABEL[f.type].toLowerCase()} ${f.period} · ${aed(existing ? recordedTotal : f.amount)}`);
     onClose();
   }

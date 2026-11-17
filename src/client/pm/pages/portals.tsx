@@ -138,6 +138,7 @@ function TenantBillRow({ bill: u }: { bill: UtilityBill }) {
       const doc = s.saveDoc({ entity: "utility", entity_id: u.id, category: "utility_receipt", name: f.name, mime: f.type || "application/octet-stream", url: String(r.result), uploaded_on: today() });
       s.saveUtility({ ...u, receipt_doc_id: doc.id, receipt_status: "submitted" });
       s.notify("Receipt sent", "Thank you. We'll check it and mark the bill paid.");
+      s.alert("Utility receipt to check", `${s.tenantName(s.me.tenant_id)} uploaded a receipt for ${UTIL_LABEL[u.type].toLowerCase()} ${u.period}.`, { roles: ["admin", "manager", "finance"] });
     };
     r.readAsDataURL(f);
   }

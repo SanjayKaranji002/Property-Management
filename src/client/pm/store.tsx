@@ -4,9 +4,17 @@ import {
   buildInstallments, buildReceipts, calcInstallments, daysUntil, defaultSettings, today,
   seedContracts, seedDocs, seedLandlords, seedMessages, seedProperties, seedTenants, seedUsers, seedUtilities,
   type Channel, type Contract, type Recipient, type RecipientType, type ReminderType, type SendVia, type Doc, type Installment, type Landlord, type Message, type Module,
-  type Property, type Receipt, type ReceiptStatus, type Closure, type Settings, type Tenant, type User, type UtilityBill, agreementRef } from "./data";
+  type Property, type Role, type Receipt, type ReceiptStatus, type Closure, type Settings, type Tenant, type User, type UtilityBill, agreementRef } from "./data";
 
 export interface Toast { id: number; title: string; body: string }
+
+/** Who a notification is for. Anyone matching any field sees it. */
+export interface Audience { users?: number[]; roles?: Role[]; tenants?: number[]; landlords?: number[] }
+interface InboxItem extends Toast { at: string; readBy: number[]; to: Audience }
+
+const isFor = (to: Audience, u: User) =>
+  !!(to.users?.includes(u.id) || to.roles?.includes(u.role)
+    || (u.tenant_id && to.tenants?.includes(u.tenant_id)) || (u.landlord_id && to.landlords?.includes(u.landlord_id)));
 
 function useStoreValue() {
   const [landlords, setLandlords] = useState<Landlord[]>(seedLandlords);
@@ -22,19 +30,31 @@ function useStoreValue() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [currentUserId, setCurrentUserId] = useState(1);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [inbox, setInbox] = useState<(Toast & { at: string; read: boolean })[]>([
-    { id: 1, title: "Emirates ID expiring", body: "Maria Santos' Emirates ID expires in 25 days.", at: today(), read: false },
-    { id: 2, title: "Overdue rent", body: "2 instalments are overdue.", at: today(), read: false },
+  // Every notification says who it is for; the bell only shows the signed-in person's own.
+  const [inbox, setInbox] = useState<InboxItem[]>([
+    { id: 1, title: "Emirates ID expiring", body: "Maria Santos' Emirates ID expires in 25 days.", at: today(), readBy: [], to: { roles: ["admin", "manager"] } },
+    { id: 2, title: "Overdue rent", body: "2 instalments are overdue.", at: today(), readBy: [], to: { roles: ["admin", "manager", "finance"] } },
   ]);
+  const meRef = useRef(currentUserId);
+  meRef.current = currentUserId;
 
   const me = users.find((u) => u.id === currentUserId) ?? users[0];
 
   const nextId = <T extends { id: number }>(rows: T[]) => rows.reduce((m, r) => Math.max(m, r.id), 0) + 1;
 
-  const notify = useCallback((title: string, body: string) => {
+  /** Adds a notification to the bell of the people in `to` (no pop-up for the person acting). */
+  const alert = useCallback((title: string, body: string, to: Audience) => {
+    setInbox((i) => [{ id: Date.now() + Math.random(), title, body, at: today(), readBy: [], to }, ...i]);
+  }, []);
+  /**
+   * Pop-up for the person acting. It is also kept in their own bell, plus the
+   * bell of anyone in `alsoTo` — never everyone's.
+   */
+  const notify = useCallback((title: string, body: string, alsoTo?: Audience) => {
     const id = Date.now() + Math.random();
     setToasts((t) => [...t, { id, title, body }]);
-    setInbox((i) => [{ id, title, body, at: today(), read: false }, ...i]);
+    const to: Audience = { ...alsoTo, users: [...(alsoTo?.users ?? []), meRef.current] };
+    setInbox((i) => [{ id, title, body, at: today(), readBy: [meRef.current], to }, ...i]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4500);
   }, []);
 
@@ -102,6 +122,7 @@ function useStoreValue() {
       const inst = installments.find((i) => i.id === r.installment_id); const c = inst && contracts.find((x) => x.id === inst.contract_id);
       if (c) sendMessage({ channel: "whatsapp", tenant_id: c.tenant_id, landlord_id: null, kind: "Bounced cheque", body: `Cheque ${r.reference} for AED ${r.amount.toLocaleString()} was returned. Please arrange a replacement.`, status: "delivered" });
       notify("Cheque bounced", `${r.reference} — tenant notified, instalment reopened`);
+      if (c) alert("Cheque returned", `Your cheque ${r.reference} for AED ${r.amount.toLocaleString()} was returned by the bank. Please arrange a replacement.`, { tenants: [c.tenant_id] });
     } else notify(`Receipt ${status}`, r.reference);
   };
   const recordPayment = (installmentId: number, amount: number, method: string) =>
@@ -112,6 +133,8 @@ function useStoreValue() {
     setContracts((rs) => rs.map((r) => (r.id === id ? { ...r, status: "closed", closure, dewa_status: "closed" } : r)));
     setProperties((ps) => ps.map((p) => (p.id === c.property_id ? { ...p, status: "vacant" } : p)));
     notify("Tenancy closed", `${agreementRef(c)}: property marked vacant`);
+    const owner = properties.find((p) => p.id === c.property_id)?.landlord_id;
+    if (owner) alert("Tenancy closed", `${lookups.propLabel(c.property_id)} is now vacant (move-out ${closure.move_out_date}).`, { landlords: [owner] });
   };
   const patchContract = (id: number, patch: Partial<Contract>) => {
     setContracts((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -179,11 +202,14 @@ function useStoreValue() {
       const chs = reminderChannels(via, r.tenant_id);
       if (chs.length < (via === "both" ? 2 : 1)) skipped++;
       for (const ch of chs) { sendMessage({ channel: ch, tenant_id: r.tenant_id, landlord_id: null, kind: r.kind, body: r.body, status: ch === "whatsapp" ? "delivered" : "sent", auto, reminder_key: r.key }); n++; }
+      if (chs.length) alert(r.kind, r.body, { tenants: [r.tenant_id] });
       if (chs.length) sent[r.key] = new Date().toISOString();
     }
     setSentKeys((k) => ({ ...k, ...sent }));
     if (auto) setLastAutoRun({ at: new Date().toISOString(), sent: n });
-    if (n || !auto) notify(auto ? "Automatic reminders sent" : "Reminders sent", `${n} message${n === 1 ? "" : "s"} sent${skipped ? ` · ${skipped} tenants missing a phone or email` : ""}.`);
+    const summary = `${n} message${n === 1 ? "" : "s"} sent${skipped ? ` · ${skipped} tenants missing a phone or email` : ""}.`;
+    if (auto) { if (n) alert("Automatic reminders sent", summary, { roles: ["admin", "manager"] }); }
+    else notify("Reminders sent", summary);
   };
 
   // The daily run. In this prototype it runs while the app is open, as soon as
@@ -214,7 +240,10 @@ function useStoreValue() {
   return {
     landlords, properties, tenants, contracts, installments, receipts, utilities, visibleProperties, canApprove, overlapFor,
     addReceipt, setReceiptStatus, closeContract, patchContract, docs, messages, users, settings,
-    me, setCurrentUserId, toasts, inbox, setInbox, notify, can,
+    me, setCurrentUserId, toasts, notify, alert, can,
+    /** The signed-in person's notifications only. */
+    inbox: inbox.filter((i) => isFor(i.to, me)).map((i) => ({ ...i, read: i.readBy.includes(me.id) })),
+    markAllRead: () => setInbox((all) => all.map((i) => (isFor(i.to, me) && !i.readBy.includes(me.id) ? { ...i, readBy: [...i.readBy, me.id] } : i))),
     saveLandlord: upsert<Landlord>("landlords", landlords, setLandlords),
     saveProperty: upsert<Property>("properties", properties, setProperties),
     saveTenant: upsert<Tenant>("tenants", tenants, setTenants),
