@@ -160,6 +160,9 @@ function useStoreValue() {
   const viaChannels = (via: SendVia, r?: Pick<Recipient, "phone" | "email">): Channel[] =>
     (via === "both" ? ["whatsapp", "email"] as Channel[] : [via as Channel]).filter((ch) => (ch === "whatsapp" ? !!r?.phone : !!r?.email));
 
+  /** A person's chosen channel, or the fallback when they have none. */
+  const viaFor = (type: RecipientType, id: number | undefined, fallback: SendVia): SendVia => (id ? settings.contact_via[`${type}-${id}`] : undefined) ?? fallback;
+
   /** Channels a reminder actually goes out on: the chosen ones the tenant can be reached on. */
   const reminderChannels = (via: SendVia, tenantId: number): Channel[] => {
     const t = tenants.find((x) => x.id === tenantId);
@@ -172,7 +175,7 @@ function useStoreValue() {
     const sent: Record<string, string> = {};
     for (const r of dueReminders) {
       if (keys && !keys.includes(r.key)) continue;
-      const via = override ?? settings.reminder_via[r.type];
+      const via = override ?? settings.contact_via[`tenant-${r.tenant_id}`] ?? settings.reminder_via[r.type];
       const chs = reminderChannels(via, r.tenant_id);
       if (chs.length < (via === "both" ? 2 : 1)) skipped++;
       for (const ch of chs) { sendMessage({ channel: ch, tenant_id: r.tenant_id, landlord_id: null, kind: r.kind, body: r.body, status: ch === "whatsapp" ? "delivered" : "sent", auto, reminder_key: r.key }); n++; }
@@ -221,7 +224,7 @@ function useStoreValue() {
     deleteDoc: (id: number) => setDocs((d) => d.filter((x) => x.id !== id)),
     deleteProperty: (id: number) => setProperties((r) => r.filter((x) => x.id !== id)),
     saveContract, setContracts, recordPayment, sendMessage, setSettings,
-    dueReminders, runAutomation, sentKeys, lastAutoRun, reminderChannels, recipients, viaChannels,
+    dueReminders, runAutomation, sentKeys, lastAutoRun, reminderChannels, recipients, viaChannels, viaFor,
     ...lookups,
   };
 }

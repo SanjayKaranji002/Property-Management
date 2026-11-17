@@ -7,6 +7,7 @@ import { NotifyButton } from "./notify";
 import { L, useHref } from "../nav";
 import { daysUntil, DOC_LABELS, fmtDate, RECIPIENT_LABEL, REMINDER_LABEL, type RecipientType, ROLE_LABEL, VIA_LABEL, type ReminderType, type SendVia, type Channel, type Doc, type DocCategory, type Role, type Settings, type Template, type User, agreementRef, UTIL_LABEL } from "../data";
 import { PermissionsPanel } from "./access";
+import { ContactPreferences } from "./contact-prefs";
 import { describeSchedule } from "../reminders";
 import { cn } from "@/lib/utils";
 import { Segmented } from "./contracts";
@@ -70,9 +71,10 @@ export function CommunicationsPage() {
       </div>
       <Card title={`${s.settings.auto_reminders ? "Waiting for the next automatic run" : "Due now"} (${s.dueReminders.length})`}>
         {s.dueReminders.length === 0 ? <p className="text-sm text-muted-foreground">{s.settings.auto_reminders ? "Everything due has been sent automatically." : "Nothing due."}</p> :
-          <ul className="divide-y divide-border text-sm">{s.dueReminders.map((r) => <li key={r.key} className="py-2"><div className="flex flex-wrap gap-2"><ChannelTags chs={s.reminderChannels(s.settings.reminder_via[r.type], r.tenant_id)} /><L to={h.contract(r.contract_id)} className="text-xs text-muted-foreground">Open agreement</L><Pill tone={r.kind.startsWith("Overdue") ? "red" : r.kind.startsWith("Renewal") ? "violet" : "amber"}>{r.kind}</Pill><span className="font-medium">{s.tenantName(r.tenant_id)}</span></div><p className="mt-1 text-muted-foreground">{r.body}</p></li>)}</ul>}
+          <ul className="divide-y divide-border text-sm">{s.dueReminders.map((r) => <li key={r.key} className="py-2"><div className="flex flex-wrap gap-2"><ChannelTags chs={s.reminderChannels(s.viaFor("tenant", r.tenant_id, s.settings.reminder_via[r.type]), r.tenant_id)} /><L to={h.contract(r.contract_id)} className="text-xs text-muted-foreground">Open agreement</L><Pill tone={r.kind.startsWith("Overdue") ? "red" : r.kind.startsWith("Renewal") ? "violet" : "amber"}>{r.kind}</Pill><span className="font-medium">{s.tenantName(r.tenant_id)}</span></div><p className="mt-1 text-muted-foreground">{r.body}</p></li>)}</ul>}
         <p className="mt-3 text-xs text-muted-foreground">Each reminder is sent once. Overdue and renewal reminders repeat on the schedule set in Settings until the rent is paid or the agreement is renewed.</p>
       </Card>
+      <ContactPreferences />
       <TemplatesCard />
       <div className="flex items-center gap-2"><h2 className="flex-1 text-sm font-semibold">Communication history</h2>
         <NSelect className="w-40" value={ch} onChange={setCh} options={[{ value: "all", label: "All messages" }, { value: "auto", label: "Automatic only" }, { value: "whatsapp", label: "WhatsApp" }, { value: "email", label: "Email" }, { value: "sms", label: "SMS" }]} /></div>
@@ -142,14 +144,14 @@ function SendRemindersDialog({ onClose }: { onClose: () => void }) {
   const s = useStore();
   const [via, setVia] = useState<SendVia | "default">("default");
   const [picked, setPicked] = useState<string[]>(() => s.dueReminders.map((r) => r.key));
-  const chsFor = (r: (typeof s.dueReminders)[number]) => s.reminderChannels(via === "default" ? s.settings.reminder_via[r.type] : via, r.tenant_id);
+  const chsFor = (r: (typeof s.dueReminders)[number]) => s.reminderChannels(via === "default" ? s.viaFor("tenant", r.tenant_id, s.settings.reminder_via[r.type]) : via, r.tenant_id);
   const total = s.dueReminders.filter((r) => picked.includes(r.key)).reduce((t, r) => t + chsFor(r).length, 0);
   return (
     <Modal wide open onClose={onClose} title="Send due reminders"
       footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!total} onClick={() => { s.runAutomation(via === "default" ? undefined : via, picked); onClose(); }}><Send className="h-4 w-4" />Send {total} messages</Button></>}>
       <div className="space-y-1.5">
         <div className="text-xs font-medium">Send via</div>
-        <ViaPicker value={via} onChange={setVia} options={[{ value: "default", label: "As set per reminder" }, { value: "whatsapp", label: "WhatsApp" }, { value: "email", label: "Email" }, { value: "both", label: "Both" }]} />
+        <ViaPicker value={via} onChange={setVia} options={[{ value: "default", label: "Each person's preference" }, { value: "whatsapp", label: "WhatsApp" }, { value: "email", label: "Email" }, { value: "both", label: "Both" }]} />
       </div>
       <ul className="max-h-80 divide-y divide-border/70 overflow-auto text-sm">
         {s.dueReminders.map((r) => (

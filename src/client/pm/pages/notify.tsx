@@ -95,7 +95,7 @@ export function NotifyDialog({ event, onClose }: { event: NotifyEvent; onClose: 
   const list = parties[type] ?? [];
   const [toId, setToId] = useState(0);
   const to = list.find((r) => r.id === toId) ?? list[0];
-  const [via, setVia] = useState<SendVia>("both");
+  const [via, setVia] = useState<SendVia>(() => s.viaFor(types[0] ?? "tenant", (parties[types[0] ?? "tenant"] ?? [])[0]?.id, "both"));
   const tpl = T[event.kind][type];
   const ctx = contextFor(s, event, to);
   const [subject, setSubject] = useState(() => fill(tpl.subject, ctx));
@@ -106,7 +106,7 @@ export function NotifyDialog({ event, onClose }: { event: NotifyEvent; onClose: 
   function pick(nextType: RecipientType, nextId?: number) {
     const nextList = parties[nextType] ?? [];
     const who = nextList.find((r) => r.id === nextId) ?? nextList[0];
-    setType(nextType); setToId(who?.id ?? 0);
+    setType(nextType); setToId(who?.id ?? 0); setVia(s.viaFor(nextType, who?.id, "both"));
     const c = contextFor(s, event, who);
     setSubject(fill(T[event.kind][nextType].subject, c)); setBody(fill(T[event.kind][nextType].body, c));
   }

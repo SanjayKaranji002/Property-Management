@@ -73,7 +73,7 @@ export function ComposeDialog({ open, onClose, tenantIds, fromLandlord }: { open
   const list = listFor(type);
   const [toId, setToId] = useState(0);
   const to = list.find((r) => r.id === toId) ?? list[0];
-  const [via, setVia] = useState<SendVia>(fromLandlord ? "email" : "both");
+  const [via, setVia] = useState<SendVia>(() => s.viaFor("tenant", listFor("tenant")[0]?.id, fromLandlord ? "email" : "both"));
   const chs = s.viaChannels(via, to);
   const [kind, setKind] = useState<MessageType>("Payment follow-up");
   const [body, setBody] = useState("");
@@ -107,7 +107,8 @@ export function ComposeDialog({ open, onClose, tenantIds, fromLandlord }: { open
   }
 
   // Fill the template each time the window opens.
-  if (open && !wasOpen) { setWasOpen(true); fill(render(kind, type, to)); }
+  // Fill the template and the person's preferred channel each time the window opens.
+  if (open && !wasOpen) { setWasOpen(true); fill(render(kind, type, to)); setVia(s.viaFor(type, to?.id, fromLandlord ? "email" : "both")); }
   if (!open && wasOpen) setWasOpen(false);
 
   function send() {
@@ -126,10 +127,10 @@ export function ComposeDialog({ open, onClose, tenantIds, fromLandlord }: { open
       footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!body.trim() || !to || !chs.length} onClick={send}><Send className="h-4 w-4" />Send</Button></>}>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Send to">
-          <NSelect value={type} onChange={(v) => { const t = v as RecipientType; setType(t); setToId(0); load(kind, t, listFor(t)[0]); }} options={types.map((t) => ({ value: t, label: RECIPIENT_LABEL[t] }))} />
+          <NSelect value={type} onChange={(v) => { const t = v as RecipientType; setType(t); setToId(0); load(kind, t, listFor(t)[0]); setVia(s.viaFor(t, listFor(t)[0]?.id, "both")); }} options={types.map((t) => ({ value: t, label: RECIPIENT_LABEL[t] }))} />
         </Field>
         <Field label={RECIPIENT_LABEL[type]}>
-          <NSelect value={to?.id ?? ""} onChange={(v) => { setToId(Number(v)); load(kind, type, list.find((r) => r.id === Number(v))); }}
+          <NSelect value={to?.id ?? ""} onChange={(v) => { setToId(Number(v)); load(kind, type, list.find((r) => r.id === Number(v))); setVia(s.viaFor(type, Number(v), "both")); }}
             options={list.length ? list.map((r) => ({ value: r.id, label: r.name })) : [{ value: "", label: `No ${RECIPIENT_LABEL[type].toLowerCase()} users` }]} />
         </Field>
         {to && <p className="col-span-2 -mt-1 text-xs text-muted-foreground">{to.detail} · WhatsApp {to.phone || "—"} · Email {to.email || "—"}</p>}

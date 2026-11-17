@@ -123,6 +123,8 @@ export interface Settings {
   channels: Record<Channel, boolean>;
   /** How each automatic reminder goes out. */
   reminder_via: Record<ReminderType, SendVia>;
+  /** Per-person channel, keyed "<recipient type>-<id>" (e.g. "tenant-4"). Missing = the default for the reminder type. */
+  contact_via: Record<string, SendVia>;
   /** Send due reminders automatically every day (no clicking). */
   auto_reminders: boolean;
   /** Time of day the daily run happens on the backend (UAE time). */
@@ -367,6 +369,7 @@ export const defaultSettings: Settings = {
   landlord_access: { contracts: true, payments: true, documents: true, email_tenants: true, upload: false },
   channels: { whatsapp: true, email: true, sms: false, in_app: true },
   reminder_via: { upcoming: "both", overdue: "both", renewal: "both" },
+  contact_via: { "tenant-8": "whatsapp", "landlord-4": "email" },
   auto_reminders: true,
   auto_time: "09:00",
   renewal_months_before: [3, 2],
