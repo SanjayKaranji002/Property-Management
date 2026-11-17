@@ -35,15 +35,18 @@ const BLANK: Partial<Contract> = {
 export function ContractsPage({ openId }: { openId?: number } = {}) {
   const s = useStore();
   const h = useHref();
-  const [tab, setTab] = useState<"current" | "approval" | "expiring" | "history">(() => (new URLSearchParams(location.search).get("tab") as "expiring") ?? "current");
+  const [tab, setTab] = useState<"current" | "approval" | "calc" | "settle" | "expiring" | "history">(() => (new URLSearchParams(location.search).get("tab") as "expiring") ?? "current");
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<Partial<Contract> | null>(null);
   const [viewingId, setViewingId] = useState<number | null>(openId ?? null);
+  const [viewTab, setViewTab] = useState<"overview" | "schedule">("overview");
   const [closing, setClosing] = useState<Contract | null>(null);
   const visible = new Set(s.visibleProperties.map((p) => p.id));
   const mine = s.contracts.filter((c) => visible.has(c.property_id));
   const counts = {
     approval: mine.filter((c) => c.approval === "pending").length,
+    calc: mine.filter((c) => c.status === "active" && c.calc_check === "pending").length,
+    settle: mine.filter((c) => c.status === "active" && c.closure && !c.closure.approved_by_finance).length,
     expiring: mine.filter((c) => c.status === "active" && daysUntil(c.end_date) <= 90).length,
   };
 
@@ -51,6 +54,8 @@ export function ContractsPage({ openId }: { openId?: number } = {}) {
     if (!`${s.propLabel(c.property_id)} ${s.tenantName(c.tenant_id)} ${c.ejari_no}`.toLowerCase().includes(q.toLowerCase())) return false;
     if (tab === "current") return c.status === "active";
     if (tab === "approval") return c.approval === "pending";
+    if (tab === "calc") return c.status === "active" && (c.calc_check === "pending" || c.calc_check === "returned");
+    if (tab === "settle") return c.status === "active" && !!c.closure && !c.closure.approved_by_finance;
     if (tab === "expiring") return c.status === "active" && daysUntil(c.end_date) <= 90;
     return c.status !== "active";
   }).sort((a, b) => a.end_date.localeCompare(b.end_date));
@@ -64,7 +69,7 @@ export function ContractsPage({ openId }: { openId?: number } = {}) {
   }
 
   const tabs = [
-    ["current", "Current"], ["approval", `Awaiting approval (${counts.approval})`], ["expiring", `Expiring ≤ 90 days (${counts.expiring})`], ["history", "History"],
+    ["current", "Current"], ["approval", `Awaiting approval (${counts.approval})`], ["calc", `Calculation check (${counts.calc})`], ["settle", `Settlements (${counts.settle})`], ["expiring", `Expiring ≤ 90 days (${counts.expiring})`], ["history", "History"],
   ] as const;
 
   return (
@@ -81,20 +86,25 @@ export function ContractsPage({ openId }: { openId?: number } = {}) {
             <Td><div className="flex flex-wrap gap-1"><Pill tone={c.usage === "commercial" ? "violet" : "gray"}>{c.usage}</Pill>{c.role !== "direct" && <Pill tone="blue">{c.role === "lessee" ? "Lessee" : "Sub-tenant"}</Pill>}</div></Td>
             <Td className="tabular-nums">{aed(c.annual_rent)}<div className="text-xs text-muted-foreground">{c.term_years} yr · {c.frequency.replace("_", "-")}</div></Td>
             <Td><EjariPill c={c} /></Td>
-            <Td><Pill tone={APPROVAL_TONE[c.approval]}>{c.approval}</Pill></Td>
+            <Td><div className="flex flex-col items-start gap-1"><Pill tone={APPROVAL_TONE[c.approval]}>{c.approval}</Pill>
+              {c.calc_check === "pending" && <Pill tone="amber">calc check</Pill>}{c.calc_check === "returned" && <Pill tone="red">calc returned</Pill>}
+              {c.closure && !c.closure.approved_by_finance && c.status === "active" && <Pill tone="violet">settlement pending</Pill>}</div></Td>
             <Td>{fmtDate(c.end_date)}{c.status === "active" && d <= 90 && <div><Pill tone={d <= 60 ? "red" : "amber"}>{d} days left</Pill></div>}</Td>
             <Td onClick={(e) => e.stopPropagation()}>
               <div className="flex gap-1">
                 {c.approval === "pending" && s.canApprove(5) && <Button size="sm" className="rounded-full" onClick={() => { s.patchContract(c.id, { approval: "approved" }); s.notify("Agreement approved", agreementRef(c)); }}><CheckCircle2 className="h-3.5 w-3.5" />Approve</Button>}
                 {c.status === "active" && d <= 90 && <NotifyButton event={{ kind: "expiry", contractId: c.id }} />}
                 {c.status === "active" && c.approval === "approved" && d <= 90 && s.can("contracts", "edit") && <Button size="sm" variant="outline" className="rounded-full" onClick={() => renew(c)}><RefreshCw className="h-3.5 w-3.5" />Renew</Button>}
-                {c.status === "active" && c.approval === "approved" && s.can("contracts", "edit") && <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setClosing(c)}><LogOut className="h-3.5 w-3.5" />Close</Button>}
+                {c.status === "active" && c.calc_check === "pending" && s.canApprove(8) && <Button size="sm" className="rounded-full" onClick={() => { setViewTab("schedule"); setViewingId(c.id); }}><CheckCircle2 className="h-3.5 w-3.5" />Check calculation</Button>}
+                {c.status === "active" && c.closure && !c.closure.approved_by_finance && isSettler(s)
+                  ? <Button size="sm" className="rounded-full" onClick={() => setClosing(c)}><LogOut className="h-3.5 w-3.5" />Review settlement</Button>
+                  : c.status === "active" && c.approval === "approved" && !c.closure && s.can("contracts", "edit") && <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setClosing(c)}><LogOut className="h-3.5 w-3.5" />Close</Button>}
               </div>
             </Td>
           </tr>); })}
       </Table>
       <ContractDialog value={editing} onClose={() => setEditing(null)} />
-      <ContractView contract={viewingId ? s.contract(viewingId) ?? null : null} onClose={() => setViewingId(null)} onEdit={(c) => { setViewingId(null); setEditing(c); }} />
+      <ContractView key={`${viewingId}-${viewTab}`} initialTab={viewTab} contract={viewingId ? s.contract(viewingId) ?? null : null} onClose={() => { setViewingId(null); setViewTab("overview"); }} onEdit={(c) => { setViewingId(null); setEditing(c); }} />
       <ClosureDialog contract={closing} onClose={() => setClosing(null)} />
     </Page>
   );
@@ -136,7 +146,7 @@ function ContractDialog({ value, onClose }: { value: Partial<Contract> | null; o
       const start = today();
       const p0 = s.visibleProperties.find((p) => p.status === "vacant") ?? s.visibleProperties[0];
       const rent = value.annual_rent || p0?.rental_value || 0;
-      setF({ ...BLANK, start_date: start, end_date: endFor(start, 1), property_id: p0?.id, usage: p0?.usage ?? "residential", tenant_id: s.tenants[0]?.id, annual_rent: rent, deposit: Math.round(rent * 0.05), broker_fee: Math.round(rent * 0.05), ...value, ...(value.annual_rent ? {} : { annual_rent: rent }) });
+      setF({ ...BLANK, start_date: start, end_date: endFor(start, 1), property_id: p0?.id, usage: p0?.usage ?? "residential", tenant_id: s.tenants[0]?.id, annual_rent: rent, deposit: Math.round(rent * 0.05), broker_fee: Math.round(rent * 0.05), ...value, ...(value.annual_rent ? {} : { annual_rent: rent, deposit: Math.round(rent * 0.05), broker_fee: Math.round(rent * 0.05) }) });
       setCustom(!!value.custom_amounts);
     }
   }
@@ -161,11 +171,12 @@ function ContractDialog({ value, onClose }: { value: Partial<Contract> | null; o
 
   function save(submit: boolean) {
     const approval = submit ? (approver ? "approved" : "pending") : "draft";
-    const saved = s.saveContract({ ...(f as Contract), ejari_no: (f.ejari_no ?? "").trim(), approval, custom_amounts: custom ? regular.map((i) => i.amount) : null,
+    const calc_check = submit ? (s.canApprove(8) && approver ? "approved" : "pending") : f.calc_check;
+    const saved = s.saveContract({ ...(f as Contract), calc_check, calc_note: calc_check === "pending" ? undefined : f.calc_note, ejari_no: (f.ejari_no ?? "").trim(), approval, custom_amounts: custom ? regular.map((i) => i.amount) : null,
       agreement_versions: (f.agreement_versions ?? 1) + (f.id && files.length ? 1 : 0) });
     for (const file of files) s.saveDoc({ entity: "contract", entity_id: saved.id, category: "tenancy_contract", name: file.name, mime: file.mime, url: file.url, uploaded_on: today() });
     if (files.length) s.notify("Agreement document uploaded", files.map((x) => x.name).join(", "));
-    s.notify(approval === "approved" ? "Agreement approved" : approval === "pending" ? "Sent for approval" : "Draft saved", `${preview.length} instalments scheduled`);
+    s.notify(approval === "approved" ? "Agreement approved" : approval === "pending" ? "Sent for approval" : "Draft saved", `${preview.length} instalments scheduled${calc_check === "pending" ? " · sent to Finance for calculation check" : ""}`);
     onClose();
   }
 
@@ -239,10 +250,10 @@ function ContractDialog({ value, onClose }: { value: Partial<Contract> | null; o
 
 // ── Agreement view: instalments, Ejari / DEWA, closure, versions ───────
 
-export function ContractView({ contract, onClose, onEdit, portal }: { contract: Contract | null; onClose: () => void; onEdit?: (c: Contract) => void; portal?: boolean }) {
+export function ContractView({ contract, onClose, onEdit, portal, initialTab = "overview" }: { contract: Contract | null; onClose: () => void; onEdit?: (c: Contract) => void; portal?: boolean; initialTab?: "overview" | "schedule" }) {
   const s = useStore();
   const h = useHref();
-  const [tab, setTab] = useState<"overview" | "schedule" | "ejari" | "closure">("overview");
+  const [tab, setTab] = useState<"overview" | "schedule" | "ejari" | "closure">(initialTab);
   if (!contract) return null;
   const c = contract;
   const inst = s.installments.filter((i) => i.contract_id === c.id).sort((a, b) => a.due_date.localeCompare(b.due_date));
@@ -265,6 +276,7 @@ export function ContractView({ contract, onClose, onEdit, portal }: { contract: 
             {!portal && <p className="text-xs text-muted-foreground">Uploading a new signed copy keeps earlier versions in the list.</p>}
           </div>
         </div>)}
+      {tab === "schedule" && !portal && <CalcCheck contract={c} />}
       {tab === "schedule" && (
         <ul className="divide-y divide-border/70 text-sm">
           {inst.map((i) => <li key={i.id} className="flex items-center gap-2 py-2"><span className="flex-1">{i.no === 0 ? "Prorated" : `#${i.no}`} · {fmtDate(i.due_date)}</span><span className="tabular-nums">{aed(i.amount)}</span>
@@ -273,7 +285,7 @@ export function ContractView({ contract, onClose, onEdit, portal }: { contract: 
       {tab === "ejari" && <EjariDewaForm contract={c} />}
       {tab === "closure" && c.closure && (
         <dl className="grid grid-cols-2 gap-y-1.5 text-sm">
-          {[["Move-out", fmtDate(c.closure.move_out_date)], ["Final dues", aed(c.closure.final_dues)], ["Deductions", `${aed(c.closure.deductions)} ${c.closure.deduction_note}`], ["Deposit refund", aed(c.closure.deposit_refund)], ["Ejari cancellation", c.closure.ejari_cancel_ref], ["DEWA final bill", c.closure.dewa_final_ref], ["Finance approval", c.closure.approved_by_finance ? "Approved" : "Pending"]].map(([k, v]) => <div key={k} className="contents"><dt className="text-muted-foreground">{k}</dt><dd>{v}</dd></div>)}
+          {[["Move-out", fmtDate(c.closure.move_out_date)], ["Final dues", aed(c.closure.final_dues)], ["Deductions", `${aed(c.closure.deductions)} ${c.closure.deduction_note}`], ["Deposit refund", aed(c.closure.deposit_refund)], ["Ejari cancellation", c.closure.ejari_cancel_ref], ["DEWA final bill", c.closure.dewa_final_ref], ["Prepared by", c.closure.submitted_by ?? "—"], ["Finance approval", c.closure.approved_by_finance ? "Approved" : "Waiting for Finance"], ["Finance note", c.closure.finance_note ?? "—"]].map(([k, v]) => <div key={k} className="contents"><dt className="text-muted-foreground">{k}</dt><dd>{v}</dd></div>)}
         </dl>)}
     </Modal>
   );
@@ -320,19 +332,72 @@ export function EjariDewaForm({ contract: c }: { contract: Contract }) {
   );
 }
 
+/** Finance (or an Administrator) approves move-out settlements, as long as the approval matrix gives them step 12. */
+export const isSettler = (s: ReturnType<typeof useStore>) => s.canApprove(12) && (s.me.role === "finance" || s.me.role === "admin");
+
+// ── Step 8: Finance checks the rent calculation ────────────────────
+
+function CalcCheck({ contract: c }: { contract: Contract }) {
+  const s = useStore();
+  const [note, setNote] = useState(c.calc_note ?? "");
+  const inst = s.installments.filter((i) => i.contract_id === c.id);
+  const rent = inst.reduce((t, i) => t + i.amount, 0);
+  const perYear = FREQUENCIES.find((x) => x.value === c.frequency)?.payments ?? 1;
+  const expected = c.annual_rent * c.term_years * (c.usage === "commercial" ? 1 + s.settings.commercial_vat_pct / 100 : 1);
+  const diff = Math.round((rent - expected) * 100) / 100;
+  const state = c.calc_check ?? "approved";
+  const decide = (calc_check: "approved" | "returned") => {
+    s.patchContract(c.id, { calc_check, calc_note: note.trim() || undefined, calc_by: s.me.name });
+    s.notify(calc_check === "approved" ? "Calculation approved" : "Calculation sent back", `${agreementRef(c)}${calc_check === "returned" ? " · returned to the Property Manager" : ""}`);
+  };
+  return (
+    <div className={cn("space-y-3 rounded-[1.25rem] border p-4 text-sm", state === "pending" ? "border-[#e2c58f] bg-[#fbf6ec] dark:bg-[#2a2519]" : state === "returned" ? "border-[#e8c9bb] bg-[#fbf3ef] dark:bg-[#2a1f1b]" : "border-border/70")}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium">Calculation check (Finance)</span>
+        <Pill tone={state === "approved" ? "green" : state === "pending" ? "amber" : "red"}>{state === "approved" ? "Approved" : state === "pending" ? "Waiting for Finance" : "Sent back"}</Pill>
+        {c.calc_by && state !== "pending" && <span className="text-xs text-muted-foreground">by {c.calc_by}</span>}
+      </div>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
+        <div><dt className="text-xs text-muted-foreground">Annual rent × term</dt><dd>{aed(c.annual_rent)} × {c.term_years}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Payments</dt><dd>{perYear} a year · {inst.length} total</dd></div>
+        <div><dt className="text-xs text-muted-foreground">{c.usage === "commercial" ? `Expected (+${s.settings.commercial_vat_pct}% VAT)` : "Expected rent"}</dt><dd className="tabular-nums">{aed(expected)}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Schedule total</dt><dd className={cn("tabular-nums", Math.abs(diff) > 1 && "text-[#9a3f22]")}>{aed(rent)}{Math.abs(diff) > 1 && ` (${diff > 0 ? "+" : ""}${aed(diff)})`}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Deposit (separate)</dt><dd>{aed(c.deposit)}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Broker charge</dt><dd>{aed(c.broker_fee)}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Other charges</dt><dd>{aed(c.other_charges)}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">First instalment</dt><dd>{c.prorate_first ? "Prorated" : c.custom_amounts ? "Custom amounts" : "Equal split"}</dd></div>
+      </dl>
+      {Math.abs(diff) > 1 && <p className="text-xs text-[#9a3f22]">The schedule differs from annual rent × term{c.prorate_first ? " because of the prorated first part-month" : c.custom_amounts ? " because of custom amounts" : ""}. Check before approving.</p>}
+      {c.calc_note && state !== "pending" && <p className="text-xs">Note: {c.calc_note}</p>}
+      {s.canApprove(8) && state !== "approved" && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Input className="min-w-56 flex-1" placeholder="Note (required when sending back)" value={note} onChange={(e) => setNote(e.target.value)} />
+          <Button size="sm" onClick={() => decide("approved")}><CheckCircle2 className="h-4 w-4" />Approve calculation</Button>
+          <Button size="sm" variant="outline" disabled={!note.trim()} onClick={() => decide("returned")}>Send back</Button>
+        </div>)}
+      {state === "returned" && s.can("contracts", "edit") && <p className="text-xs text-muted-foreground">Edit the agreement to correct the terms and submit it again; it comes back to Finance.</p>}
+    </div>
+  );
+}
+
 // ── Step 12: closure ─────────────────────────────────────────────────
 
 export function ClosureDialog({ contract, onClose }: { contract: Contract | null; onClose: () => void }) {
   const s = useStore();
   const h = useHref();
   const [f, setF] = useState<Closure | null>(null);
+  const [note, setNote] = useState("");
   const [last, setLast] = useState<unknown>(null);
   if (contract !== last) {
     setLast(contract);
     if (contract) {
-      const due = s.installments.filter((i) => i.contract_id === contract.id && i.due_date <= today()).reduce((t, i) => t + s.balance(i), 0);
-      const bills = s.utilities.filter((u) => u.contract_id === contract.id && u.status === "unpaid").reduce((t, u) => t + u.amount, 0);
-      setF({ move_out_date: today(), final_dues: due + bills, deductions: 0, deduction_note: "", deposit_refund: Math.max(0, contract.deposit - due - bills), ejari_cancel_ref: "", dewa_final_ref: "", approved_by_finance: false });
+      setNote("");
+      if (contract.closure) setF(contract.closure); // a settlement already sent to Finance
+      else {
+        const due = s.installments.filter((i) => i.contract_id === contract.id && i.due_date <= today()).reduce((t, i) => t + s.balance(i), 0);
+        const bills = s.utilities.filter((u) => u.contract_id === contract.id && u.status === "unpaid").reduce((t, u) => t + u.amount, 0);
+        setF({ move_out_date: today(), final_dues: due + bills, deductions: 0, deduction_note: "", deposit_refund: Math.max(0, contract.deposit - due - bills), ejari_cancel_ref: "", dewa_final_ref: "", approved_by_finance: false });
+      }
     }
   }
   if (!contract || !f) return null;
@@ -341,25 +406,52 @@ export function ClosureDialog({ contract, onClose }: { contract: Contract | null
     if (k === "deductions" || k === "final_dues") n.deposit_refund = Math.max(0, contract.deposit - n.final_dues - n.deductions);
     return n;
   });
-  const finance = s.canApprove(12) && (s.me.role === "finance" || s.me.role === "admin");
+
+  // Step 12: the Property Manager prepares the move-out; Finance approves the money and closes it.
+  const settler = isSettler(s);
+  const submitted = !!contract.closure; // already waiting for Finance
+  const canEditFigures = settler || (!submitted && s.can("contracts", "edit"));
+
+  function sendToFinance() {
+    s.patchContract(contract!.id, { closure: { ...f!, approved_by_finance: false, submitted_by: s.me.name } });
+    s.notify("Sent to Finance", `Move-out settlement for ${agreementRef(contract!)} is waiting for Finance approval.`);
+    onClose();
+  }
+  function approveAndClose() {
+    s.closeContract(contract!.id, { ...f!, approved_by_finance: true, finance_note: note.trim() || undefined, submitted_by: f!.submitted_by ?? s.me.name });
+    onClose();
+  }
+  function sendBack() {
+    s.patchContract(contract!.id, { closure: null });
+    s.notify("Settlement sent back", `${agreementRef(contract!)}: ${note.trim()}`);
+    onClose();
+  }
+
   return (
-    <Modal open onClose={onClose} title={`Close tenancy ${agreementRef(contract)}`}
-      footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button disabled={!f.approved_by_finance} onClick={() => { s.closeContract(contract.id, f); onClose(); }}>Close tenancy</Button></>}>
+    <Modal open onClose={onClose} title={submitted ? `Settlement for approval · ${agreementRef(contract)}` : `Close tenancy ${agreementRef(contract)}`}
+      footer={<>
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        {submitted && settler && <Button variant="outline" disabled={!note.trim()} onClick={sendBack}>Send back</Button>}
+        {settler
+          ? <Button onClick={approveAndClose}><CheckCircle2 className="h-4 w-4" />Approve &amp; close tenancy</Button>
+          : !submitted && <Button onClick={sendToFinance}>Send to Finance for approval</Button>}
+      </>}>
       <p className="text-sm text-muted-foreground"><L to={h.property(contract.property_id)}>{s.propLabel(contract.property_id)}</L> — <L to={h.tenant(contract.tenant_id)}>{s.tenantName(contract.tenant_id)}</L> · deposit held {aed(contract.deposit)}</p>
+      {submitted && <p className="rounded-2xl bg-muted px-3 py-2 text-xs">Prepared by {f.submitted_by ?? "the Property Manager"}. {settler ? "Check the figures, then approve to close the tenancy, or send it back with a note." : "Waiting for Finance to approve."}</p>}
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Move-out date"><Input type="date" value={f.move_out_date} onChange={(e) => set("move_out_date", e.target.value)} /></Field>
-        <Field label="Final dues (rent + utilities)"><Input type="number" value={f.final_dues} onChange={(e) => set("final_dues", Number(e.target.value))} /></Field>
-        <Field label="Approved deductions"><Input type="number" value={f.deductions} onChange={(e) => set("deductions", Number(e.target.value))} /></Field>
-        <Field label="Deduction reason"><Input value={f.deduction_note} onChange={(e) => set("deduction_note", e.target.value)} placeholder="e.g. repainting" /></Field>
-        <Field label="Deposit refund"><Input type="number" value={f.deposit_refund} onChange={(e) => set("deposit_refund", Number(e.target.value))} /></Field>
-        <Field label="Ejari cancellation ref."><Input value={f.ejari_cancel_ref} onChange={(e) => set("ejari_cancel_ref", e.target.value)} /></Field>
-        <Field label="DEWA final bill / closure ref." className="col-span-2"><Input value={f.dewa_final_ref} onChange={(e) => set("dewa_final_ref", e.target.value)} /></Field>
-        <label className="col-span-2 flex items-center gap-2 text-sm">
-          <input type="checkbox" disabled={!finance} checked={f.approved_by_finance} onChange={(e) => set("approved_by_finance", e.target.checked)} />
-          Finance approves the settlement and deposit refund{!finance && " (Finance or Administrator only)"}
-        </label>
+        <Field label="Move-out date"><Input disabled={!canEditFigures} type="date" value={f.move_out_date} onChange={(e) => set("move_out_date", e.target.value)} /></Field>
+        <Field label="Final dues (rent + utilities)"><Input disabled={!canEditFigures} type="number" value={f.final_dues} onChange={(e) => set("final_dues", Number(e.target.value))} /></Field>
+        <Field label="Deductions"><Input disabled={!canEditFigures} type="number" value={f.deductions} onChange={(e) => set("deductions", Number(e.target.value))} /></Field>
+        <Field label="Deduction reason"><Input disabled={!canEditFigures} value={f.deduction_note} onChange={(e) => set("deduction_note", e.target.value)} placeholder="e.g. repainting" /></Field>
+        <Field label="Deposit refund"><Input disabled={!canEditFigures} type="number" value={f.deposit_refund} onChange={(e) => set("deposit_refund", Number(e.target.value))} /></Field>
+        <Field label="Ejari cancellation ref."><Input disabled={!canEditFigures} value={f.ejari_cancel_ref} onChange={(e) => set("ejari_cancel_ref", e.target.value)} /></Field>
+        <Field label="DEWA final bill / closure ref." className="col-span-2"><Input disabled={!canEditFigures} value={f.dewa_final_ref} onChange={(e) => set("dewa_final_ref", e.target.value)} /></Field>
+        {settler && <Field label={submitted ? "Finance note (required to send back)" : "Finance note (optional)"} className="col-span-2"><Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. deduction agreed with tenant" /></Field>}
       </div>
-      <p className="text-xs text-muted-foreground">Closing marks the property vacant, cancels Ejari and closes the DEWA linkage on the dashboard.</p>
+      <p className="text-xs text-muted-foreground">
+        {settler ? "Approving closes the tenancy: the property becomes vacant, Ejari is cancelled and the DEWA linkage is closed."
+          : "Finance approves the final dues, deductions and deposit refund before the tenancy is closed."}
+      </p>
     </Modal>
   );
 }

@@ -155,7 +155,10 @@ export function NotifyDialog({ event, onClose }: { event: NotifyEvent; onClose: 
 export function NotifyButton({ event, label = "Notify", size = "sm" }: { event: NotifyEvent; label?: string; size?: "sm" | "icon" }) {
   const s = useStore();
   const [open, setOpen] = useState(false);
-  if (!s.can("communications", "edit")) return null;
+  const allowed = s.can("communications", "edit")
+    || (event.kind === "payment" && s.can("payments", "edit"))
+    || (event.kind === "utility" && s.can("utilities", "edit"));
+  if (!allowed) return null;
   return (
     <>
       <Button size="sm" variant="outline" className="h-7 rounded-full px-2.5 text-xs" onClick={(e) => { e.stopPropagation(); setOpen(true); }} aria-label={label}>

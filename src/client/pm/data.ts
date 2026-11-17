@@ -18,7 +18,9 @@ export interface Receipt {
   reference: string; bank: string; status: ReceiptStatus; replaces_id: number | null; note?: string;
 }
 export interface Template { id: number; name: string; trigger: string; body: string; approved: boolean }
-export interface Closure { move_out_date: string; final_dues: number; deductions: number; deduction_note: string; deposit_refund: number; ejari_cancel_ref: string; dewa_final_ref: string; approved_by_finance: boolean }
+export interface Closure { move_out_date: string; final_dues: number; deductions: number; deduction_note: string; deposit_refund: number; ejari_cancel_ref: string; dewa_final_ref: string; approved_by_finance: boolean
+  /** Who started the move-out, and Finance's note when approving or returning it. */
+  submitted_by?: string; finance_note?: string }
 export type PropertyStatus = "occupied" | "vacant" | "rented";
 export type Usage = "residential" | "commercial";
 export type Frequency = "monthly" | "quarterly" | "half_yearly" | "yearly";
@@ -52,6 +54,8 @@ export interface Contract {
   ejari_status: EjariStatus; ejari_reg_date: string; ejari_expiry: string;
   dewa_account: string; dewa_status: DewaStatus; dewa_deposit_confirmed: boolean; move_in_date: string;
   closure?: Closure | null; agreement_versions: number;
+  /** Step 8: Finance checks the rent calculation after the agreement is approved. Absent = checked. */
+  calc_check?: "pending" | "approved" | "returned"; calc_note?: string; calc_by?: string;
 }
 export interface Installment {
   id: number; contract_id: number; no: number; due_date: string;
