@@ -124,9 +124,11 @@ function AutoSwitch() {
   return (
     <button type="button" role="switch" aria-checked={on} disabled={!admin} title={admin ? "" : "Only an Administrator can change this"}
       onClick={() => { s.setSettings({ ...s.settings, auto_reminders: !on }); s.notify(`Automatic reminders ${on ? "off" : "on"}`, on ? "Reminders will wait for someone to send them." : `Due reminders now go out every day at ${s.settings.auto_time}.`); }}
-      className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-60", on ? "bg-[#1f3d2b] text-[#f4f1ea] dark:bg-[#8fb89a] dark:text-[#14231a]" : "border border-border bg-card text-muted-foreground")}>
-      <span className={cn("relative h-4 w-7 rounded-full transition-colors", on ? "bg-white/30" : "bg-muted")}><span className={cn("absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform", on ? "translate-x-3.5" : "translate-x-0.5")} /></span>
-      {on ? "On" : "Off"}
+      className={cn("inline-flex shrink-0 items-center gap-2.5 rounded-full py-1.5 pl-1.5 pr-3.5 text-sm font-medium transition-colors disabled:opacity-60", on ? "bg-[#1f3d2b] text-[#f4f1ea] dark:bg-[#8fb89a] dark:text-[#14231a]" : "border border-border bg-card text-muted-foreground")}>
+      <span aria-hidden className={cn("relative block h-5 w-9 shrink-0 rounded-full transition-colors", on ? "bg-white/25" : "bg-muted ring-1 ring-inset ring-border")}>
+        <span className={cn("absolute left-0.5 top-0.5 block h-4 w-4 rounded-full shadow transition-transform", on ? "translate-x-4 bg-white" : "translate-x-0 bg-white dark:bg-[#9aa096]")} />
+      </span>
+      <span className="w-6 text-left">{on ? "On" : "Off"}</span>
     </button>
   );
 }
