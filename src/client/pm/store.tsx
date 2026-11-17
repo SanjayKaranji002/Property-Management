@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { dueRemindersFor } from "./reminders";
 import {
   buildInstallments, buildReceipts, calcInstallments, daysUntil, defaultSettings, today,
   seedContracts, seedDocs, seedLandlords, seedMessages, seedProperties, seedTenants, seedUsers, seedUtilities,
@@ -137,30 +138,14 @@ function useStoreValue() {
   }, [properties, tenants, landlords, contracts]);
 
   // ── Automation: what the scheduler would send today ─────────────────
-  const dueReminders = useMemo(() => {
-    const out: { key: string; type: ReminderType; kind: string; tenant_id: number; contract_id: number; body: string }[] = [];
-    for (const i of installments) {
-      const c = lookups.contract(i.contract_id); if (!c || c.status !== "active") continue;
-      const bal = lookups.balance(i); if (bal <= 0) continue;
-      const d = daysUntil(i.due_date);
-      const where = lookups.propLabel(c.property_id);
-      const name = lookups.tenantName(c.tenant_id);
-      if (d >= 0 && d <= settings.rent_days_before)
-        out.push({ key: `up-${i.id}`, type: "upcoming", kind: "Upcoming rent", tenant_id: c.tenant_id, contract_id: c.id, body: `Dear ${name}, instalment #${i.no} of AED ${bal.toLocaleString()} for ${where} is due on ${i.due_date}.` });
-      if (d < 0 && (-d) % settings.overdue_every_days === 0 || (d < 0 && -d <= 1))
-        out.push({ key: `od-${i.id}`, type: "overdue", kind: "Overdue rent", tenant_id: c.tenant_id, contract_id: c.id, body: `Dear ${name}, instalment #${i.no} of AED ${bal.toLocaleString()} for ${where} is ${-d} days overdue. Pay securely here: ${location.origin}/pay/${i.id}` });
-    }
-    for (const c of contracts) {
-      if (c.status !== "active") continue;
-      const d = daysUntil(c.end_date);
-      for (const m of settings.renewal_months_before) {
-        const windowStart = m * 30, windowEnd = (m - 1) * 30;
-        if (d <= windowStart && d > windowEnd)
-          out.push({ key: `rn-${c.id}-${m}`, type: "renewal", kind: `Renewal reminder (${m} months)`, tenant_id: c.tenant_id, contract_id: c.id, body: `Dear ${lookups.tenantName(c.tenant_id)}, your tenancy for ${lookups.propLabel(c.property_id)} expires on ${c.end_date}. Please confirm whether you wish to renew.` });
-      }
-    }
-    return out;
-  }, [installments, contracts, settings, lookups]);
+  // Reminder keys already sent (see reminders.ts): each is sent once, ever.
+  const [sentKeys, setSentKeys] = useState<Record<string, string>>({});
+  const [lastAutoRun, setLastAutoRun] = useState<{ at: string; sent: number } | null>(null);
+  const dueReminders = useMemo(() => dueRemindersFor({
+    installments, contracts, settings, balance: lookups.balance, propLabel: lookups.propLabel, tenantName: lookups.tenantName,
+    awaitingClearance: (id) => receipts.some((r) => r.installment_id === id && r.status === "received"),
+    payLink: (id) => `${location.origin}/pay/${id}`,
+  }).filter((r) => !sentKeys[r.key]), [installments, contracts, settings, lookups, receipts, sentKeys]);
 
   /** Everyone a message can be addressed to, by type. */
   const recipients = (type: RecipientType): Recipient[] => {
@@ -182,17 +167,31 @@ function useStoreValue() {
     return want.filter((ch) => (ch === "whatsapp" ? !!t?.phone : !!t?.email));
   };
   /** Sends the given (default: all) due reminders. `override` replaces each type's configured channel. */
-  const runAutomation = (override?: SendVia, keys?: string[]) => {
+  const runAutomation = (override?: SendVia, keys?: string[], auto = false) => {
     let n = 0, skipped = 0;
+    const sent: Record<string, string> = {};
     for (const r of dueReminders) {
       if (keys && !keys.includes(r.key)) continue;
       const via = override ?? settings.reminder_via[r.type];
       const chs = reminderChannels(via, r.tenant_id);
       if (chs.length < (via === "both" ? 2 : 1)) skipped++;
-      for (const ch of chs) { sendMessage({ channel: ch, tenant_id: r.tenant_id, landlord_id: null, kind: r.kind, body: r.body, status: ch === "whatsapp" ? "delivered" : "sent" }); n++; }
+      for (const ch of chs) { sendMessage({ channel: ch, tenant_id: r.tenant_id, landlord_id: null, kind: r.kind, body: r.body, status: ch === "whatsapp" ? "delivered" : "sent", auto, reminder_key: r.key }); n++; }
+      if (chs.length) sent[r.key] = new Date().toISOString();
     }
-    notify("Reminders sent", `${n} messages sent${skipped ? ` · ${skipped} tenants missing a phone or email` : ""}.`);
+    setSentKeys((k) => ({ ...k, ...sent }));
+    if (auto) setLastAutoRun({ at: new Date().toISOString(), sent: n });
+    if (n || !auto) notify(auto ? "Automatic reminders sent" : "Reminders sent", `${n} message${n === 1 ? "" : "s"} sent${skipped ? ` · ${skipped} tenants missing a phone or email` : ""}.`);
   };
+
+  // The daily run. In this prototype it runs while the app is open, as soon as
+  // something becomes due; on the backend the same rules run once a day at settings.auto_time.
+  const dueKeys = dueReminders.map((r) => r.key).join("|");
+  useEffect(() => {
+    if (!settings.auto_reminders || !dueKeys) return;
+    const t = setTimeout(() => runAutomation(undefined, undefined, true), 1500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dueKeys, settings.auto_reminders]);
 
   // ── Access control ────────────────────────────────────────────────
   const can = (mod: Module, level: "view" | "edit" = "view") => {
@@ -222,7 +221,7 @@ function useStoreValue() {
     deleteDoc: (id: number) => setDocs((d) => d.filter((x) => x.id !== id)),
     deleteProperty: (id: number) => setProperties((r) => r.filter((x) => x.id !== id)),
     saveContract, setContracts, recordPayment, sendMessage, setSettings,
-    dueReminders, runAutomation, reminderChannels, recipients, viaChannels,
+    dueReminders, runAutomation, sentKeys, lastAutoRun, reminderChannels, recipients, viaChannels,
     ...lookups,
   };
 }

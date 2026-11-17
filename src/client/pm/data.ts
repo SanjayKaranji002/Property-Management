@@ -87,6 +87,8 @@ export interface Message {
   kind: string; body: string; status: "delivered" | "sent" | "failed" | "scheduled"; at: string;
   /** Set when the message went to someone other than the tenant. */
   recipient_type?: RecipientType; recipient_name?: string;
+  /** Sent by the automatic reminder run, with the schedule key that triggered it. */
+  auto?: boolean; reminder_key?: string;
 }
 export type RecipientType = "tenant" | "landlord" | "broker" | "manager" | "finance";
 export const RECIPIENT_LABEL: Record<RecipientType, string> = { tenant: "Tenant", landlord: "Landlord", broker: "Broker", manager: "Property Manager", finance: "Finance" };
@@ -121,6 +123,10 @@ export interface Settings {
   channels: Record<Channel, boolean>;
   /** How each automatic reminder goes out. */
   reminder_via: Record<ReminderType, SendVia>;
+  /** Send due reminders automatically every day (no clicking). */
+  auto_reminders: boolean;
+  /** Time of day the daily run happens on the backend (UAE time). */
+  auto_time: string;
   renewal_months_before: number[];   // 3 and 2 months before expiry
   renewal_frequency_days: number;    // repeat within each window
   rent_days_before: number;
@@ -361,6 +367,8 @@ export const defaultSettings: Settings = {
   landlord_access: { contracts: true, payments: true, documents: true, email_tenants: true, upload: false },
   channels: { whatsapp: true, email: true, sms: false, in_app: true },
   reminder_via: { upcoming: "both", overdue: "both", renewal: "both" },
+  auto_reminders: true,
+  auto_time: "09:00",
   renewal_months_before: [3, 2],
   renewal_frequency_days: 7,
   rent_days_before: 7,

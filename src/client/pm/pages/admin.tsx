@@ -7,6 +7,8 @@ import { NotifyButton } from "./notify";
 import { L, useHref } from "../nav";
 import { daysUntil, DOC_LABELS, fmtDate, RECIPIENT_LABEL, REMINDER_LABEL, type RecipientType, ROLE_LABEL, VIA_LABEL, type ReminderType, type SendVia, type Channel, type Doc, type DocCategory, type Role, type Settings, type Template, type User, agreementRef, UTIL_LABEL } from "../data";
 import { PermissionsPanel } from "./access";
+import { describeSchedule } from "../reminders";
+import { cn } from "@/lib/utils";
 import { Segmented } from "./contracts";
 import { useStore } from "../store";
 import { Card, DocViewer, Field, Modal, NSelect, Page, Pill, SearchBox, Table, Td, ViaPicker } from "../ui";
@@ -52,21 +54,31 @@ export function CommunicationsPage() {
   const [sending, setSending] = useState(false);
   const [composing, setComposing] = useState(false);
   const [ch, setCh] = useState("all");
-  const rows = s.messages.filter((m) => ch === "all" || m.channel === ch);
+  const rows = s.messages.filter((m) => ch === "all" || (ch === "auto" ? m.auto : m.channel === ch));
   return (
     <Page title="WhatsApp & notifications" meta="Automated reminders and communication history"
       actions={s.can("communications", "edit") && <><Button variant="outline" onClick={() => setComposing(true)}><Plus className="h-4 w-4" />New message</Button><Button disabled={!s.dueReminders.length} onClick={() => setSending(true)}><Zap className="h-4 w-4" />Send due reminders ({s.dueReminders.length})</Button></>}>
-      <Card title={`Due today by schedule (${s.dueReminders.length})`}>
-        {s.dueReminders.length === 0 ? <p className="text-sm text-muted-foreground">Nothing due.</p> :
+      <div className={cn("flex flex-wrap items-center gap-3 rounded-[1.5rem] border px-5 py-4", s.settings.auto_reminders ? "border-[#1f3d2b]/30 bg-[#e6ede6] dark:bg-[#1f2b23]" : "border-border bg-card")}>
+        <Zap className="h-5 w-5" />
+        <div className="min-w-0 flex-1 text-sm">
+          <div className="font-medium">Automatic reminders are {s.settings.auto_reminders ? "ON" : "OFF"}</div>
+          <div className="text-muted-foreground">{s.settings.auto_reminders
+            ? `Sent every day at ${s.settings.auto_time} by WhatsApp and/or email. ${s.lastAutoRun ? `Last run ${new Date(s.lastAutoRun.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}: ${s.lastAutoRun.sent} sent.` : "Nothing has been due yet."}`
+            : "Due reminders wait here until someone sends them."}</div>
+        </div>
+        {s.me.role === "admin" && <AutoSwitch />}
+      </div>
+      <Card title={`${s.settings.auto_reminders ? "Waiting for the next automatic run" : "Due now"} (${s.dueReminders.length})`}>
+        {s.dueReminders.length === 0 ? <p className="text-sm text-muted-foreground">{s.settings.auto_reminders ? "Everything due has been sent automatically." : "Nothing due."}</p> :
           <ul className="divide-y divide-border text-sm">{s.dueReminders.map((r) => <li key={r.key} className="py-2"><div className="flex flex-wrap gap-2"><ChannelTags chs={s.reminderChannels(s.settings.reminder_via[r.type], r.tenant_id)} /><L to={h.contract(r.contract_id)} className="text-xs text-muted-foreground">Open agreement</L><Pill tone={r.kind.startsWith("Overdue") ? "red" : r.kind.startsWith("Renewal") ? "violet" : "amber"}>{r.kind}</Pill><span className="font-medium">{s.tenantName(r.tenant_id)}</span></div><p className="mt-1 text-muted-foreground">{r.body}</p></li>)}</ul>}
-        <p className="mt-3 text-xs text-muted-foreground">The scheduler sends these every morning by WhatsApp, email or both, as set per reminder type in Settings.</p>
+        <p className="mt-3 text-xs text-muted-foreground">Each reminder is sent once. Overdue and renewal reminders repeat on the schedule set in Settings until the rent is paid or the agreement is renewed.</p>
       </Card>
       <TemplatesCard />
       <div className="flex items-center gap-2"><h2 className="flex-1 text-sm font-semibold">Communication history</h2>
-        <NSelect className="w-40" value={ch} onChange={setCh} options={[{ value: "all", label: "All channels" }, { value: "whatsapp", label: "WhatsApp" }, { value: "email", label: "Email" }, { value: "sms", label: "SMS" }]} /></div>
+        <NSelect className="w-40" value={ch} onChange={setCh} options={[{ value: "all", label: "All messages" }, { value: "auto", label: "Automatic only" }, { value: "whatsapp", label: "WhatsApp" }, { value: "email", label: "Email" }, { value: "sms", label: "SMS" }]} /></div>
       <Table head={["When", "Channel", "To", "Type", "Message", "Status"]} empty={!rows.length}>
         {rows.map((m) => (
-          <tr key={m.id}><Td className="whitespace-nowrap">{m.at.replace("T", " ")}</Td><Td><Pill tone={CH_TONE[m.channel]}>{m.channel}</Pill></Td>
+          <tr key={m.id}><Td className="whitespace-nowrap">{m.at.replace("T", " ")}</Td><Td><div className="flex flex-col items-start gap-1"><Pill tone={CH_TONE[m.channel]}>{m.channel}</Pill>{m.auto && <Pill tone="gray">automatic</Pill>}</div></Td>
             <Td><L to={m.recipient_type === "landlord" || (!m.tenant_id && m.landlord_id) ? h.landlord(m.landlord_id) : m.tenant_id ? h.tenant(m.tenant_id) : h.page("/users", "users")}>{m.recipient_name ?? s.tenantName(m.tenant_id)}</L><div className="text-xs text-muted-foreground">{RECIPIENT_LABEL[m.recipient_type ?? "tenant"]}{m.landlord_id && m.recipient_type !== "landlord" ? ` · from ${s.landlord(m.landlord_id)?.name}` : ""}</div></Td><Td>{m.kind}</Td>
             <Td className="max-w-md"><span className="line-clamp-2">{m.body}</span></Td>
             <Td><Pill tone={m.status === "failed" ? "red" : m.status === "delivered" ? "green" : "gray"}>{m.status}</Pill></Td></tr>))}
@@ -101,6 +113,21 @@ function TemplatesCard() {
           <p className="text-xs text-muted-foreground">Placeholders: {"{{tenant}} {{property}} {{amount}} {{no}} {{due_date}} {{days}} {{end_date}} {{link}} {{ref}}"}</p>
         </Modal>)}
     </Card>
+  );
+}
+
+/** The on/off switch for automatic reminders (Administrators only). */
+function AutoSwitch() {
+  const s = useStore();
+  const on = s.settings.auto_reminders;
+  const admin = s.me.role === "admin";
+  return (
+    <button type="button" role="switch" aria-checked={on} disabled={!admin} title={admin ? "" : "Only an Administrator can change this"}
+      onClick={() => { s.setSettings({ ...s.settings, auto_reminders: !on }); s.notify(`Automatic reminders ${on ? "off" : "on"}`, on ? "Reminders will wait for someone to send them." : `Due reminders now go out every day at ${s.settings.auto_time}.`); }}
+      className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-60", on ? "bg-[#1f3d2b] text-[#f4f1ea] dark:bg-[#8fb89a] dark:text-[#14231a]" : "border border-border bg-card text-muted-foreground")}>
+      <span className={cn("relative h-4 w-7 rounded-full transition-colors", on ? "bg-white/30" : "bg-muted")}><span className={cn("absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform", on ? "translate-x-3.5" : "translate-x-0.5")} /></span>
+      {on ? "On" : "Off"}
+    </button>
   );
 }
 
@@ -202,6 +229,19 @@ export function SettingsPage() {
   return (
     <Page title="Settings" meta="Notifications, reminders and rent calculation">
       <div className="grid gap-4 lg:grid-cols-2">
+        <Card title="Automatic reminders" className="lg:col-span-2" actions={<AutoSwitch />}>
+          <div className="grid gap-4 md:grid-cols-[1fr_auto]">
+            <div className="space-y-2 text-sm">
+              <p>{st.auto_reminders
+                ? <>Reminders go out <b>automatically every day at {st.auto_time}</b> by WhatsApp and/or email, as set below. Nobody needs to click anything; each reminder is sent once.</>
+                : <>Automatic sending is <b>off</b>. Due reminders wait on the WhatsApp page until someone clicks <b>Send due reminders</b>.</>}</p>
+              <p className="text-muted-foreground">{describeSchedule(st)}</p>
+              {s.lastAutoRun && <p className="text-xs text-muted-foreground">Last automatic run: {new Date(s.lastAutoRun.at).toLocaleString("en-GB")} · {s.lastAutoRun.sent} message{s.lastAutoRun.sent === 1 ? "" : "s"} sent</p>}
+            </div>
+            <Field label="Daily send time (UAE)"><Input type="time" className="w-36" value={st.auto_time} onChange={(e) => set({ auto_time: e.target.value })} /></Field>
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">In this prototype the run happens while the app is open. Once the backend is connected, the same rules run on the server every day at this time, even when nobody is logged in.</p>
+        </Card>
         <Card title="Reminder channels">
           <ul className="space-y-3 text-sm">{(Object.keys(REMINDER_LABEL) as ReminderType[]).map((k) => (
             <li key={k} className="flex flex-wrap items-center justify-between gap-2"><span>{REMINDER_LABEL[k]}</span>
@@ -216,11 +256,17 @@ export function SettingsPage() {
         </Card>
         <Card title="Reminder schedule">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Renewal reminders (months before expiry)"><Input value={st.renewal_months_before.join(", ")} onChange={(e) => set({ renewal_months_before: e.target.value.split(",").map((x) => parseInt(x)).filter((x) => x > 0) })} /></Field>
-            <Field label="Repeat renewal reminder every (days)"><Input type="number" min={1} value={st.renewal_frequency_days} onChange={(e) => set({ renewal_frequency_days: Number(e.target.value) })} /></Field>
+            <Field label="Renewal reminders (months before expiry)" className="col-span-2">
+              <div className="flex flex-wrap gap-1.5">{[6, 5, 4, 3, 2, 1].map((m) => { const on = st.renewal_months_before.includes(m); return (
+                <button key={m} type="button" aria-pressed={on} onClick={() => set({ renewal_months_before: on ? st.renewal_months_before.filter((x) => x !== m) : [...st.renewal_months_before, m].sort((a, b) => b - a) })}
+                  className={on ? "rounded-full bg-primary px-3 py-1.5 text-sm text-primary-foreground" : "rounded-full border border-border bg-card px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"}>{m} month{m === 1 ? "" : "s"}</button>); })}
+              </div>
+            </Field>
+            <Field label="Repeat renewal reminder every (days, 0 = no repeat)"><Input type="number" min={0} value={st.renewal_frequency_days} onChange={(e) => set({ renewal_frequency_days: Math.max(0, Number(e.target.value)) })} /></Field>
             <Field label="Upcoming rent reminder (days before)"><Input type="number" min={0} value={st.rent_days_before} onChange={(e) => set({ rent_days_before: Number(e.target.value) })} /></Field>
-            <Field label="Overdue reminder every (days)"><Input type="number" min={1} value={st.overdue_every_days} onChange={(e) => set({ overdue_every_days: Number(e.target.value) })} /></Field>
+            <Field label="Overdue reminder every (days)"><Input type="number" min={1} value={st.overdue_every_days} onChange={(e) => set({ overdue_every_days: Math.max(1, Number(e.target.value)) })} /></Field>
           </div>
+          <p className="mt-3 text-xs text-muted-foreground">{describeSchedule(st)}</p>
         </Card>
         <Card title="Rent calculation">
           <div className="grid grid-cols-2 gap-3">
